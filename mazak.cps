@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43437 1b53a3c9972c57aff85aac46a65b59209f1440e3 $
-  $Date: 2021-09-21 10:21:32 $
+  $Revision: 43462 e9b6842f3e6234c1aaf343320b80f62d2d29ad08 $
+  $Date: 2021-10-12 12:45:30 $
   
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -180,6 +180,7 @@ var singleLineCoolant = false; // specifies to output multiple coolant codes in 
 // samples:
 // {id: COOLANT_THROUGH_TOOL, on: 88, off: 89}
 // {id: COOLANT_THROUGH_TOOL, on: [8, 88], off: [9, 89]}
+// {id: COOLANT_THROUGH_TOOL, on: "M88 P3 (myComment)", off: "M89"}
 var coolants = [
   {id: COOLANT_FLOOD, on: 8},
   {id: COOLANT_MIST, on: 7},
@@ -2250,7 +2251,7 @@ function getCoolantCodes(coolant) {
   if (!coolants) {
     error(localize("Coolants have not been defined."));
   }
-  if (isProbeOperation()) { // avoid coolant output for probing
+  if (tool.type == TOOL_PROBE) { // avoid coolant output for probing
     coolant = COOLANT_OFF;
   }
   if (coolant == currentCoolantMode) {
@@ -2259,10 +2260,10 @@ function getCoolantCodes(coolant) {
   if ((coolant != COOLANT_OFF) && (currentCoolantMode != COOLANT_OFF) && (coolantOff != undefined)) {
     if (Array.isArray(coolantOff)) {
       for (var i in coolantOff) {
-        multipleCoolantBlocks.push(mFormat.format(coolantOff[i]));
+        multipleCoolantBlocks.push(coolantOff[i]);
       }
     } else {
-      multipleCoolantBlocks.push(mFormat.format(coolantOff));
+      multipleCoolantBlocks.push(coolantOff);
     }
   }
 
@@ -2297,12 +2298,17 @@ function getCoolantCodes(coolant) {
   } else {
     if (Array.isArray(m)) {
       for (var i in m) {
-        multipleCoolantBlocks.push(mFormat.format(m[i]));
+        multipleCoolantBlocks.push(m[i]);
       }
     } else {
-      multipleCoolantBlocks.push(mFormat.format(m));
+      multipleCoolantBlocks.push(m);
     }
     currentCoolantMode = coolant;
+    for (var i in multipleCoolantBlocks) {
+      if (typeof multipleCoolantBlocks[i] == "number") {
+        multipleCoolantBlocks[i] = mFormat.format(multipleCoolantBlocks[i]);
+      }
+    }
     return multipleCoolantBlocks; // return the single formatted coolant value
   }
   return undefined;
