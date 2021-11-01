@@ -4,9 +4,9 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43462 e9b6842f3e6234c1aaf343320b80f62d2d29ad08 $
-  $Date: 2021-10-12 12:45:30 $
-  
+  $Revision: 43494 7c5e27ae46336e64aeded77bffc5c259a90bdb03 $
+  $Date: 2021-11-01 14:51:58 $
+
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
 
@@ -55,157 +55,157 @@ highFeedrate = (unit == IN) ? 650 : 5000;
 // user-defined properties
 properties = {
   machineModel: {
-    title: "Machine model",
+    title      : "Machine model",
     description: "Specifies the pre-configured machine model.",
-    type: "enum",
-    group: 0,
-    values: [
-      {title: "None", id: "none"},
-      {title: "UMC-500", id: "umc-500"},
-      {title: "UMC-750", id: "umc-750"},
-      {title: "UMC-1000", id: "umc-1000"},
-      {title: "UMC-1600-H", id: "umc-1600"}
+    type       : "enum",
+    group      : 0,
+    values     : [
+      {title:"None", id:"none"},
+      {title:"UMC-500", id:"umc-500"},
+      {title:"UMC-750", id:"umc-750"},
+      {title:"UMC-1000", id:"umc-1000"},
+      {title:"UMC-1600-H", id:"umc-1600"}
     ],
     value: "none",
     scope: "post"
   },
   hasAAxis: {
-    title: "Has A-axis rotary",
+    title      : "Has A-axis rotary",
     description: "Enable if the machine has an A-axis table/trunnion. Check the table direction on the machine and use the (Reversed) selection if the table is moving in the opposite direction.",
-    type: "enum",
-    group: 1,
-    values: [
-      {title: "No", id: "false"},
-      {title: "Yes", id: "true"},
-      {title: "Reversed", id: "reversed"}
+    type       : "enum",
+    group      : 1,
+    values     : [
+      {title:"No", id:"false"},
+      {title:"Yes", id:"true"},
+      {title:"Reversed", id:"reversed"}
     ],
     value: "false",
     scope: "post"
   },
   hasBAxis: {
-    title: "Has B-axis rotary",
+    title      : "Has B-axis rotary",
     description: "Enable if the machine has a B-axis table/trunnion. Check the table direction on the machine and use the (Reversed) selection if the table is moving in the opposite direction.",
-    type: "enum",
-    group: 1,
-    values: [
-      {title: "No", id: "false"},
-      {title: "Yes", id: "true"},
-      {title: "Reversed", id: "reversed"}
+    type       : "enum",
+    group      : 1,
+    values     : [
+      {title:"No", id:"false"},
+      {title:"Yes", id:"true"},
+      {title:"Reversed", id:"reversed"}
     ],
     value: "false",
     scope: "post"
   },
   hasCAxis: {
-    title: "Has C-axis rotary",
+    title      : "Has C-axis rotary",
     description: "Enable if the machine has a C-axis table. Specifies a trunnion setup if an A-axis or B-axis is defined. Check the table direction on the machine and use the (Reversed) selection if the table is moving in the opposite direction.",
-    type: "enum",
-    group: 1,
-    values: [
-      {title: "No", id: "false"},
-      {title: "Yes", id: "true"},
-      {title: "Reversed", id: "reversed"}
+    type       : "enum",
+    group      : 1,
+    values     : [
+      {title:"No", id:"false"},
+      {title:"Yes", id:"true"},
+      {title:"Reversed", id:"reversed"}
     ],
     value: "false",
     scope: "post"
   },
   useDPMFeeds: {
-    title: "Rotary moves use DPM feeds",
+    title      : "Rotary moves use DPM feeds",
     description: "Enable to output DPM feeds, disable for Inverse Time feeds with rotary axes moves.",
-    group: 1,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useTCPC: {
-    title: "Use TCPC programming",
+    title      : "Use TCPC programming",
     description: "The control supports Tool Center Point Control programming.",
-    group: 1,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useDWO: {
-    title: "Use DWO",
+    title      : "Use DWO",
     description: "Specifies that the Dynamic Work Offset feature (G254/G255) should be used.",
-    group: 1,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   preloadTool: {
-    title: "Preload tool",
+    title      : "Preload tool",
     description: "Preloads the next tool at a tool change (if any).",
-    group: 2,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   chipTransport: {
-    title: "Use chip transport",
+    title      : "Use chip transport",
     description: "Enable to turn on chip transport at start of program.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   optionalStop: {
-    title: "Optional stop",
+    title      : "Optional stop",
     description: "Specifies that optional stops M1 should be output at tool changes.",
-    group: 2,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   separateWordsWithSpace: {
-    title: "Separate words with space",
+    title      : "Separate words with space",
     description: "Adds spaces between words if 'yes' is selected.",
-    group: 2,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useRadius: {
-    title: "Radius arcs",
+    title      : "Radius arcs",
     description: "If yes is selected, arcs are output using radius values rather than IJK.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useParametricFeed: {
-    title: "Parametric feed",
+    title      : "Parametric feed",
     description: "Parametric feed values based on movement type are output.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useG0: {
-    title: "Use G0",
+    title      : "Use G0",
     description: "Specifies that G0s should be used for rapid moves when moving along a single axis.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   safePositionMethod: {
-    title: "Safe Retracts",
+    title      : "Safe Retracts",
     description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
-    type: "enum",
-    values: [
-      {title: "G28", id: "G28"},
-      {title: "G53", id: "G53"},
-      {title: "Clearance Height", id: "clearanceHeight"}
+    type       : "enum",
+    values     : [
+      {title:"G28", id:"G28"},
+      {title:"G53", id:"G53"},
+      {title:"Clearance Height", id:"clearanceHeight"}
     ],
     value: "G53",
     scope: "post"
   },
   useSmoothing: {
-    title: "Use G187",
+    title      : "Use G187",
     description: "G187 smoothing mode.  'Default' will use the built in control level.",
-    type: "enum",
-    group:1,
-    values:[
+    type       : "enum",
+    group      : 1,
+    values     : [
       {title:"Off", id:"-1"},
       {title:"Automatic", id:"9999"},
       {title:"Default", id:"0"},
@@ -217,215 +217,224 @@ properties = {
     scope: "post"
   },
   homePositionCenter: {
-    title: "Home position center",
+    title      : "Home position center",
     description: "Enable to center the part along X at the end of program for easy access. Requires a CNC with a moving table.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   optionallyCycleToolsAtStart: {
-    title: "Optionally cycle tools at start",
+    title      : "Optionally cycle tools at start",
     description: "Cycle through each tool used at the beginning of the program when block delete is turned off.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   optionallyMeasureToolsAtStart: {
-    title: "Optionally measure tools at start",
+    title      : "Optionally measure tools at start",
     description: "Measure each tool used at the beginning of the program when block delete is turned off.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   forceHomeOnIndexing: {
-    title: "Force XY home position on indexing",
+    title      : "Force XY home position on indexing",
     description: "Move XY to their home positions on multi-axis indexing.",
-    group: 2,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   toolBreakageTolerance: {
-    title: "Tool breakage tolerance",
+    title      : "Tool breakage tolerance",
     description: "Specifies the tolerance for which tool break detection will raise an alarm.",
-    group: 2,
-    type: "spatial",
-    value: 0.1,
-    scope: "post"
+    group      : 2,
+    type       : "spatial",
+    value      : 0.1,
+    scope      : "post"
   },
   toolArmDrive: {
-    title: "Machine has a tool setting probe arm",
+    title      : "Machine has a tool setting probe arm",
     description: "Outputs M104/M105 to extend/retract the tool setting probe arm",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useSSV: {
-    title: "Use SSV",
+    title      : "Use SSV",
     description: "Outputs M138/M139 to enable Spindle Speed Variation (SSV).",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   safeStartAllOperations: {
-    title: "Safe start all operations",
+    title      : "Safe start all operations",
     description: "Write optional blocks at the beginning of all operations that include all commands to start program.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   fastToolChange: {
-    title: "Fast tool change",
+    title      : "Fast tool change",
     description: "Skip spindle off, coolant off, and Z retract to make tool change quicker.",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useG95forTapping: {
-    title: "Use G95 for tapping",
+    title      : "Use G95 for tapping",
     description: "use IPR/MPR instead of IPM/MPM for tapping",
-    group: 2,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 2,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   safeRetractDistance: {
-    title: "Safe retract distance",
+    title      : "Safe retract distance",
     description: "Specifies the distance to add to retract distance when rewinding rotary axes.",
-    group: 2,
-    type: "spatial",
-    value: 0,
-    scope: "post"
+    group      : 2,
+    type       : "spatial",
+    value      : 0,
+    scope      : "post"
   },
   useSubroutines: {
-    title: "Use subroutines",
+    title      : "Use subroutines",
     description: "Select your desired subroutine option. 'All Operations' creates subroutines per each operation, 'Cycles' creates subroutines for cycle operations on same holes, and 'Patterns' creates subroutines for patterned operations.",
-    type: "enum",
-    values: [
-      {title: "No", id: "none"},
-      {title: "All Operations", id: "allOperations"},
-      {title: "Cycles", id: "cycles"},
-      {title: "Patterns", id: "patterns"}
+    type       : "enum",
+    values     : [
+      {title:"No", id:"none"},
+      {title:"All Operations", id:"allOperations"},
+      {title:"Cycles", id:"cycles"},
+      {title:"Patterns", id:"patterns"}
     ],
     group: 3,
     value: "none",
     scope: "post"
   },
   writeMachine: {
-    title: "Write machine",
+    title      : "Write machine",
     description: "Output the machine settings in the header of the code.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   writeTools: {
-    title: "Write tool list",
+    title      : "Write tool list",
     description: "Output a tool list in the header of the code.",
-    group: 4,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   writeVersion: {
-    title: "Write version",
+    title      : "Write version",
     description: "Write the version number in the header of the code.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   showSequenceNumbers: {
-    title: "Use sequence numbers",
+    title      : "Use sequence numbers",
     description: "Use sequence numbers for each block of outputted code.",
-    group: 4,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   sequenceNumberStart: {
-    title: "Start sequence number",
+    title      : "Start sequence number",
     description: "The number at which to start the sequence numbers.",
-    group: 4,
-    type: "integer",
-    value: 10,
-    scope: "post"
+    group      : 4,
+    type       : "integer",
+    value      : 10,
+    scope      : "post"
   },
   sequenceNumberIncrement: {
-    title: "Sequence number increment",
+    title      : "Sequence number increment",
     description: "The amount by which the sequence number is incremented by in each block.",
-    group: 4,
-    type: "integer",
-    value: 5,
-    scope: "post"
+    group      : 4,
+    type       : "integer",
+    value      : 5,
+    scope      : "post"
   },
   sequenceNumberOnlyOnToolChange: {
-    title: "Block number only on tool change",
+    title      : "Block number only on tool change",
     description: "Specifies that block numbers should only be output at tool changes.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   showNotes: {
-    title: "Show notes",
+    title      : "Show notes",
     description: "Enable to output notes for operations.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useM130PartImages: {
-    title: "Include M130 part images",
+    title      : "Include M130 part images",
     description: "Enable to include M130 part images with the NC file.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useM130ToolImages: {
-    title: "Include M130 tool images",
+    title      : "Include M130 tool images",
     description: "Enable to include M130 tool images with the NC file.",
-    group: 4,
-    type: "boolean",
-    value: false,
-    scope: "post"
+    group      : 4,
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   coolantPressure: {
-    title: "Coolant pressure",
+    title      : "Coolant pressure",
     description: "Select the coolant pressure if equipped with a Variable Frequency Drive.  Select 'Default' if this option is not installed.",
-    type: "enum",
-    group: 2,
-    values: [
-      {title: "Default", id: ""},
-      {title: "Low", id: "P0"},
-      {title: "Normal", id: "P1"},
-      {title: "High", id: "P2"}
+    type       : "enum",
+    group      : 2,
+    values     : [
+      {title:"Default", id:""},
+      {title:"Low", id:"P0"},
+      {title:"Normal", id:"P1"},
+      {title:"High", id:"P2"}
     ],
     value: "",
     scope: "post"
   },
   singleResultsFile: {
-    title: "Create single results file",
+    title      : "Create single results file",
     description: "Set to false if you want to store the measurement results for each probe / inspection toolpath in a separate file",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useClampCodes: {
-    title: "Use clamp codes",
+    title      : "Use clamp codes",
     description: "Specifies whether clamp codes for rotary axes should be output. For simultaneous toolpaths rotary axes will always get unclamped.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   }
+};
+
+// wcs definiton
+wcsDefinitions = {
+  useZeroOffset: false,
+  wcs          : [
+    {name:"Standard", format:"G", range:[54, 59]},
+    {name:"Extended", format:"G154 P", range:[1, 99]}
+  ]
 };
 
 var singleLineCoolant = false; // specifies to output multiple coolant codes in one line rather than in separate lines
@@ -434,15 +443,15 @@ var singleLineCoolant = false; // specifies to output multiple coolant codes in 
 // {id: COOLANT_THROUGH_TOOL, on: [8, 88], off: [9, 89]}
 // {id: COOLANT_THROUGH_TOOL, on: "M88 P3 (myComment)", off: "M89"}
 var coolants = [
-  {id: COOLANT_FLOOD, on: 8},
-  {id: COOLANT_MIST},
-  {id: COOLANT_THROUGH_TOOL, on: 88, off: 89},
-  {id: COOLANT_AIR, on: 83, off: 84},
-  {id: COOLANT_AIR_THROUGH_TOOL, on: 73, off: 74},
-  {id: COOLANT_SUCTION},
-  {id: COOLANT_FLOOD_MIST},
-  {id: COOLANT_FLOOD_THROUGH_TOOL, on: [88, 8], off: [89, 9]},
-  {id: COOLANT_OFF, off: 9}
+  {id:COOLANT_FLOOD, on:8},
+  {id:COOLANT_MIST},
+  {id:COOLANT_THROUGH_TOOL, on:88, off:89},
+  {id:COOLANT_AIR, on:83, off:84},
+  {id:COOLANT_AIR_THROUGH_TOOL, on:73, off:74},
+  {id:COOLANT_SUCTION},
+  {id:COOLANT_FLOOD_MIST},
+  {id:COOLANT_FLOOD_THROUGH_TOOL, on:[88, 8], off:[89, 9]},
+  {id:COOLANT_OFF, off:9}
 ];
 
 // old machines only support 4 digits
@@ -469,7 +478,7 @@ var taperFormat = createFormat({decimals:1, scale:DEG});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
-var zOutput = createVariable({onchange: function() {retracted = false;}, prefix:"Z"}, xyzFormat);
+var zOutput = createVariable({onchange:function() {retracted = false;}, prefix:"Z"}, xyzFormat);
 var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
@@ -500,7 +509,7 @@ var gRotationModal = createModal({
 }, gFormat); // modal group 16 // G68-G69
 var ssvModal = createModal({}, mFormat); // M138, M139
 var mClampModal = createModalGroup(
-  {strict: false},
+  {strict:false},
   [
     [10, 11], // 4th axis clamp / unclamp
     [12, 13] // 5th axis clamp / unclamp
@@ -520,9 +529,9 @@ var WARNING_WORK_OFFSET = 0;
 var allowIndexingWCSProbing = false; // specifies that probe WCS with tool orientation is supported
 var probeVariables = {
   outputRotationCodes: false, // defines if it is required to output rotation codes
-  probeAngleMethod: "OFF", // OFF, AXIS_ROT, G68, G54.4
-  compensationXY: undefined,
-  rotationalAxis: -1
+  probeAngleMethod   : "OFF", // OFF, AXIS_ROT, G68, G54.4
+  compensationXY     : undefined,
+  rotationalAxis     : -1
 };
 
 var SUB_UNKNOWN = 0;
@@ -943,7 +952,7 @@ function defineMachine() {
         var dir = getProperty("hasCAxis") == "reversed" ? -1 : 1;
         cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, dir], cyclic:true, reset:1, tcp:useTCPC});
       }
-    
+
       if (hasA && hasC) { // AC trunnion
         machineConfiguration = new MachineConfiguration(aAxis, cAxis);
       } else if (hasB && hasC) { // BC trunnion
@@ -1004,7 +1013,7 @@ function onOpen() {
     error(localize("You must set 'highFeedrate' because axes are not synchronized for rapid traversal."));
     return;
   }
-  
+
   if (!getProperty("separateWordsWithSpace")) {
     setWordSeparator("");
   }
@@ -1033,7 +1042,7 @@ function onOpen() {
     error(localize("Program name has not been specified."));
     return;
   }
-  
+
   if (getProperty("useG0")) {
     writeComment(localize("Using G0 which travels along dogleg path."));
   } else {
@@ -1177,7 +1186,7 @@ function onOpen() {
         error(subst(localize("Dynamic work offset has not been set for operation '%1'."), description));
         failed = true;
       }
-      
+
       var o = section.getDynamicWCSOrigin();
       var p = section.getDynamicWCSPlane();
       if (dynamicWCSs[section.getDynamicWorkOffset()]) {
@@ -1295,27 +1304,27 @@ function disableLengthCompensation(force, message) {
 
 // Start of smoothing logic
 var smoothingSettings = {
-  roughing: 1, // roughing level for smoothing in automatic mode
-  semi: 2, // semi-roughing level for smoothing in automatic mode
-  semifinishing: 2, // semi-finishing level for smoothing in automatic mode
-  finishing: 3, // finishing level for smoothing in automatic mode
-  thresholdRoughing: toPreciseUnit(0.5, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
-  thresholdFinishing: toPreciseUnit(0.05, MM), // operations with stock/tolerance below that threshold will use finishing level in automatic mode
+  roughing              : 1, // roughing level for smoothing in automatic mode
+  semi                  : 2, // semi-roughing level for smoothing in automatic mode
+  semifinishing         : 2, // semi-finishing level for smoothing in automatic mode
+  finishing             : 3, // finishing level for smoothing in automatic mode
+  thresholdRoughing     : toPreciseUnit(0.5, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
+  thresholdFinishing    : toPreciseUnit(0.05, MM), // operations with stock/tolerance below that threshold will use finishing level in automatic mode
   thresholdSemiFinishing: toPreciseUnit(0.1, MM), // operations with stock/tolerance above finishing and below threshold roughing that threshold will use semi finishing level in automatic mode
-  
+
   differenceCriteria: "level", // options: "level", "tolerance", "both". Specifies criteria when output smoothing codes
-  autoLevelCriteria: "stock", // use "stock"  or "tolerance" to determine levels in automatic mode
+  autoLevelCriteria : "stock", // use "stock"  or "tolerance" to determine levels in automatic mode
   cancelCompensation: false // tool length compensation must be canceled prior to changing the smoothing level
 };
 
 // collected state below, do not edit
 var smoothing = {
-  isActive: false, // the current state of smoothing
-  isAllowed: false, // smoothing is allowed for this operation
+  isActive   : false, // the current state of smoothing
+  isAllowed  : false, // smoothing is allowed for this operation
   isDifferent: false, // tells if smoothing levels/tolerances/both are different between operations
-  level: -1, // the active level of smoothing
-  tolerance: -1, // the current operation tolerance
-  force: false // smoothing needs to be forced out in this operation
+  level      : -1, // the active level of smoothing
+  tolerance  : -1, // the current operation tolerance
+  force      : false // smoothing needs to be forced out in this operation
 };
 
 function initializeSmoothing() {
@@ -1326,7 +1335,7 @@ function initializeSmoothing() {
   smoothing.level = parseInt(getProperty("useSmoothing"), 10);
   smoothing.level = isNaN(smoothing.level) ? -1 : smoothing.level;
   smoothing.tolerance = Math.max(getParameter("operation:tolerance", smoothingSettings.thresholdFinishing), 0);
-  
+
   // automatically determine smoothing level
   if (smoothing.level == 9999) {
     if (smoothingSettings.autoLevelCriteria == "stock") { // determine auto smoothing level based on stockToLeave
@@ -1428,7 +1437,7 @@ function getFeed(f) {
 function initializeActiveFeeds() {
   activeMovements = new Array();
   var movements = currentSection.getMovements();
-  
+
   var id = 0;
   var activeFeeds = new Array();
   if (hasParameter("operation:tool_feedCutting")) {
@@ -1447,7 +1456,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:finishFeedrate")) {
     if (movements & (1 << MOVEMENT_FINISH_CUTTING)) {
       var feedContext = new FeedContext(id, localize("Finish"), getParameter("operation:finishFeedrate"));
@@ -1463,7 +1472,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:tool_feedEntry")) {
     if (movements & (1 << MOVEMENT_LEAD_IN)) {
       var feedContext = new FeedContext(id, localize("Entry"), getParameter("operation:tool_feedEntry"));
@@ -1499,7 +1508,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:reducedFeedrate")) {
     if (movements & (1 << MOVEMENT_REDUCED)) {
       var feedContext = new FeedContext(id, localize("Reduced"), getParameter("operation:reducedFeedrate"));
@@ -1543,7 +1552,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   for (var i = 0; i < activeFeeds.length; ++i) {
     var feedContext = activeFeeds[i];
     writeBlock("#" + (firstFeedParameter + feedContext.id) + "=" + feedFormat.format(feedContext.feed), formatComment(feedContext.description));
@@ -1623,7 +1632,7 @@ function setWorkPlane(abc) {
 
   skipBlock = _skipBlock;
   positionABC(abc, true);
-  
+
   skipBlock = _skipBlock;
   if (!currentSection.isMultiAxis() && !isPolarModeActive()) {
     onCommand(COMMAND_LOCK_MULTI_AXIS);
@@ -1736,7 +1745,7 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane) {
   } else {
     abc = machineConfiguration.getPreferredABC(abc);
   }
-  
+
   try {
     abc = machineConfiguration.remapABC(abc);
   } catch (e) {
@@ -1747,12 +1756,12 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane) {
       + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
     );
   }
-  
+
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
   }
-  
+
   if (!machineConfiguration.isABCSupported(abc)) {
     error(
       localize("Work plane is not supported") + ":"
@@ -1770,7 +1779,7 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane) {
     var R = machineConfiguration.getRemainingOrientation(abc, W);
     setRotation(R);
   }
-  
+
   return abc;
 }
 
@@ -1942,12 +1951,12 @@ function subprogramDefine(_initialPosition, _abc, _retracted, _zIsOutput) {
         currentSubprogram = ++lastSubprogram;
       }
       definedPatterns.push({
-        patternType: SUB_PATTERN,
-        patternId: currentPattern,
-        subProgram: currentSubprogram,
-        validPattern: usePattern,
+        patternType    : SUB_PATTERN,
+        patternId      : currentPattern,
+        subProgram     : currentSubprogram,
+        validPattern   : usePattern,
         initialPosition: _initialPosition,
-        finalPosition: _initialPosition
+        finalPosition  : _initialPosition
       });
     }
 
@@ -1994,12 +2003,12 @@ function subprogramDefine(_initialPosition, _abc, _retracted, _zIsOutput) {
         currentSubprogram = ++lastSubprogram;
       }
       definedPatterns.push({
-        patternType: SUB_CYCLE,
-        patternId: currentPattern,
-        subProgram: currentSubprogram,
-        validPattern: usePattern,
+        patternType    : SUB_CYCLE,
+        patternId      : currentPattern,
+        subProgram     : currentSubprogram,
+        validPattern   : usePattern,
         initialPosition: _initialPosition,
-        finalPosition: finalPosition
+        finalPosition  : finalPosition
       });
     }
     cycleSubprogramIsActive = usePattern;
@@ -2107,9 +2116,9 @@ function subprogramIsValid(_section, _patternId, _patternType) {
 function setAxisMode(_format, _output, _prefix, _value, _incr) {
   var i = _output.isEnabled();
   if (_output == zOutput) {
-    _output = _incr ? createIncrementalVariable({onchange: function() {retracted = false;}, prefix: _prefix}, _format) : createVariable({onchange: function() {retracted = false;}, prefix: _prefix}, _format);
+    _output = _incr ? createIncrementalVariable({onchange:function() {retracted = false;}, prefix:_prefix}, _format) : createVariable({onchange:function() {retracted = false;}, prefix:_prefix}, _format);
   } else {
-    _output = _incr ? createIncrementalVariable({prefix: _prefix}, _format) : createVariable({prefix: _prefix}, _format);
+    _output = _incr ? createIncrementalVariable({prefix:_prefix}, _format) : createVariable({prefix:_prefix}, _format);
   }
   _output.format(_value);
   _output.format(_value);
@@ -2150,7 +2159,7 @@ function onSection() {
   var insertToolCall = forceToolAndRetract || isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
-  
+
   retracted = false;
 
   var zIsOutput = false; // true if the Z-position has been output, used for patterns
@@ -2165,7 +2174,7 @@ function onSection() {
       getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
 
   operationNeedsSafeStart = getProperty("safeStartAllOperations") && !isFirstSection();
-  
+
   if (insertToolCall || operationNeedsSafeStart) {
     if (getProperty("fastToolChange") && !isProbeOperation()) {
       currentCoolantMode = COOLANT_OFF;
@@ -2177,7 +2186,7 @@ function onSection() {
   initializeSmoothing();
 
   if ((insertToolCall && !getProperty("fastToolChange")) || newWorkOffset || newWorkPlane || toolChecked) {
-    
+
     // stop spindle before retract during tool change
     if (insertToolCall && !isFirstSection() && !toolChecked && !getProperty("fastToolChange")) {
       onCommand(COMMAND_STOP_SPINDLE);
@@ -2204,7 +2213,7 @@ function onSection() {
   } else {
     writeln("");
   }
-  
+
   if (getProperty("showNotes") && hasParameter("notes")) {
     var notes = getParameter("notes");
     if (notes) {
@@ -2239,7 +2248,7 @@ function onSection() {
       writeRetract(Z);
     }
   }
-  
+
   if (insertToolCall || operationNeedsSafeStart) {
 
     if (getProperty("useM130ToolImages")) {
@@ -2285,7 +2294,7 @@ function onSection() {
       }
     }
   }
-  
+
   // activate those two coolant modes before the spindle is turned on
   if ((tool.coolant == COOLANT_THROUGH_TOOL) || (tool.coolant == COOLANT_AIR_THROUGH_TOOL) || (tool.coolant == COOLANT_FLOOD_THROUGH_TOOL)) {
     if (!isFirstSection() && !insertToolCall && (currentCoolantMode != tool.coolant)) {
@@ -2325,7 +2334,7 @@ function onSection() {
   }
 
   previewImage();
-  
+
   if (getProperty("useParametricFeed") &&
       hasParameter("operation-strategy") &&
       (getParameter("operation-strategy") != "drill") && // legacy
@@ -2347,36 +2356,14 @@ function onSection() {
     currentWorkOffset = undefined;
     skipBlock = operationNeedsSafeStart && !newWorkOffset && !insertToolCall;
   }
-  var workOffset = currentSection.workOffset;
-  if (workOffset == 0) {
-    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
-    workOffset = 1;
-  }
-  if (workOffset > 0) {
-    if (workOffset > 6) {
-      var code = workOffset - 6;
-      if (code > 99) {
-        error(localize("Work offset out of range."));
-        return;
-      }
-      if (workOffset != currentWorkOffset) {
-        if (!skipBlock) {
-          forceWorkPlane();
-        }
-        writeBlock(gFormat.format(154), "P" + code);
-        currentWorkOffset = workOffset;
-      }
-    } else {
-      if (workOffset != currentWorkOffset) {
-        if (!skipBlock) {
-          forceWorkPlane();
-        }
-        writeBlock(gFormat.format(53 + workOffset)); // G54->G59
-        currentWorkOffset = workOffset;
-      }
+  if (currentSection.workOffset != currentWorkOffset) {
+    if (!skipBlock) {
+      forceWorkPlane();
     }
+    writeBlock(currentSection.wcs);
+    currentWorkOffset = currentSection.workOffset;
   }
-  
+
   if (newWorkPlane || (insertToolCall && !retracted)) { // go to home position for safety
     if (!retracted) {
       writeRetract(Z);
@@ -2385,11 +2372,11 @@ function onSection() {
       writeRetract(X, Y);
     }
   }
-  
+
   if (newWorkOffset) {
     forceWorkPlane();
   }
-  
+
   var abc = defineWorkPlane(currentSection, true);
 
   setProbeAngle(); // output probe angle rotations if required
@@ -2507,7 +2494,7 @@ function onSection() {
       }
     }
   }
-  
+
   if (isProbeOperation()) {
     validate(probeVariables.probeAngleMethod != "G68", "You cannot probe while G68 Rotation is in effect.");
     validate(probeVariables.probeAngleMethod != "G54.4", "You cannot probe while workpiece setting error compensation G54.4 is enabled.");
@@ -2732,7 +2719,7 @@ function onCyclePoint(x, y, z) {
       // return to initial Z which is clearance plane and set absolute mode
       repositionToCycleClearance(cycle, x, y, z);
     }
-    
+
     var F = cycle.feedrate;
     var P = !cycle.dwell ? 0 : clamp(1, cycle.dwell * 1000, 99999999); // in milliseconds
 
@@ -3614,7 +3601,7 @@ function setPolarMode(section, mode) {
   }
 
   var direction = polarDirection;
-  
+
   // determine the rotary axis to use for polar interpolation
   var axis = undefined;
   if (machineConfiguration.getAxisV().isEnabled()) {
@@ -3665,7 +3652,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
       return;
     }
   }
-  
+
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation cannot be activated/deactivated for a circular move."));
     return;
@@ -3835,12 +3822,12 @@ function getCoolantCodes(coolant) {
 }
 
 var mapCommand = {
-  COMMAND_END:2,
-  COMMAND_SPINDLE_CLOCKWISE:3,
-  COMMAND_SPINDLE_COUNTERCLOCKWISE:4,
-  COMMAND_STOP_SPINDLE:5,
-  COMMAND_ORIENTATE_SPINDLE:19,
-  COMMAND_LOAD_TOOL:6
+  COMMAND_END                     : 2,
+  COMMAND_SPINDLE_CLOCKWISE       : 3,
+  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
+  COMMAND_STOP_SPINDLE            : 5,
+  COMMAND_ORIENTATE_SPINDLE       : 19,
+  COMMAND_LOAD_TOOL               : 6
 };
 
 function onCommand(command) {
@@ -3916,7 +3903,7 @@ function onCommand(command) {
   case COMMAND_PROBE_OFF:
     return;
   }
-  
+
   var stringId = getCommandStringId(command);
   var mcode = mapCommand[stringId];
   if (mcode != undefined) {
@@ -4213,7 +4200,7 @@ function onClose() {
 
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
-  
+
   if (getProperty("useM130PartImages") || getProperty("useM130ToolImages")) {
     writeBlock(mFormat.format(131));
   }
