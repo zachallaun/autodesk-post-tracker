@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43494 7c5e27ae46336e64aeded77bffc5c259a90bdb03 $
-  $Date: 2021-11-01 14:51:58 $
+  $Revision: 43499 c7b3c0480b5f1cdae0fadcf8212aac824a5d6261 $
+  $Date: 2021-11-03 14:11:19 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -202,13 +202,12 @@ properties = {
   },
   useSmoothing: {
     title      : "Use G187",
-    description: "G187 smoothing mode.  'Default' will use the built in control level.",
+    description: "G187 smoothing mode.",
     type       : "enum",
     group      : 1,
     values     : [
       {title:"Off", id:"-1"},
       {title:"Automatic", id:"9999"},
-      {title:"Default", id:"0"},
       {title:"Rough", id:"1"},
       {title:"Medium", id:"2"},
       {title:"Finish", id:"3"}
@@ -1397,16 +1396,24 @@ function initializeSmoothing() {
 }
 
 function setSmoothing(mode) {
-  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent)) {
+  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent) && !smoothing.force) {
     return; // return if smoothing is already active or is not different
   }
   if (typeof lengthCompensationActive != "undefined" && smoothingSettings.cancelCompensation) {
     validate(!lengthCompensationActive, "Length compensation is active while trying to update smoothing.");
   }
   if (mode) { // enable smoothing
-    writeBlock(gFormat.format(187), conditional((smoothing.level != 0), "P" + smoothing.level));
+    writeBlock(
+      gFormat.format(187),
+      "P" + smoothing.level,
+      conditional((smoothingSettings.differenceCriteria != "level"), "E" + xyzFormat.format(smoothing.tolerance))
+    );
+  } else { // disable smoothing
+    writeBlock(gFormat.format(187));
   }
   smoothing.isActive = mode;
+  smoothing.force = false;
+  smoothing.isDifferent = false;
 }
 // End of smoothing logic
 
@@ -2394,9 +2401,7 @@ function onSection() {
     }
   }
 
-  if (insertToolCall || operationNeedsSafeStart) {
-    smoothing.isActive = !smoothing.isActive; // force smoothing on tool changes
-  }
+  smoothing.force = operationNeedsSafeStart && (getProperty("useSmoothing") != "-1");
   setSmoothing(smoothing.isAllowed);
 
   var G = ((highFeedMapping != HIGH_FEED_NO_MAPPING) || !getProperty("useG0")) ? 1 : 0;
