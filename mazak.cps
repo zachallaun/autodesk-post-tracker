@@ -4,9 +4,9 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43462 e9b6842f3e6234c1aaf343320b80f62d2d29ad08 $
-  $Date: 2021-10-12 12:45:30 $
-  
+  $Revision: 43526 066a0df7890e2e31ca7e85d5b8a1b2369ca46192 $
+  $Date: 2021-11-22 19:37:32 $
+
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
 
@@ -40,138 +40,138 @@ probeMultipleFeatures = true;
 // user-defined properties
 properties = {
   writeMachine: {
-    title: "Write machine",
+    title      : "Write machine",
     description: "Output the machine settings in the header of the code.",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   writeTools: {
-    title: "Write tool list",
+    title      : "Write tool list",
     description: "Output a tool list in the header of the code.",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   preloadTool: {
-    title: "Preload tool",
+    title      : "Preload tool",
     description: "Preloads the next tool at a tool change (if any).",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   showSequenceNumbers: {
-    title: "Use sequence numbers",
+    title      : "Use sequence numbers",
     description: "Use sequence numbers for each block of outputted code.",
-    group: 1,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 1,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   sequenceNumberStart: {
-    title: "Start sequence number",
+    title      : "Start sequence number",
     description: "The number at which to start the sequence numbers.",
-    group: 1,
-    type: "integer",
-    value: 10,
-    scope: "post"
+    group      : 1,
+    type       : "integer",
+    value      : 10,
+    scope      : "post"
   },
   sequenceNumberIncrement: {
-    title: "Sequence number increment",
+    title      : "Sequence number increment",
     description: "The amount by which the sequence number is incremented by in each block.",
-    group: 1,
-    type: "integer",
-    value: 5,
-    scope: "post"
+    group      : 1,
+    type       : "integer",
+    value      : 5,
+    scope      : "post"
   },
   optionalStop: {
-    title: "Optional stop",
+    title      : "Optional stop",
     description: "Outputs optional stop code during when necessary in the code.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   separateWordsWithSpace: {
-    title: "Separate words with space",
+    title      : "Separate words with space",
     description: "Adds spaces between words if 'yes' is selected.",
-    type: "boolean",
-    value: true,
-    scope: "post"
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useRadius: {
-    title: "Radius arcs",
+    title      : "Radius arcs",
     description: "If yes is selected, arcs are outputted using radius values rather than IJK.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useParametricFeed: {
-    title: "Parametric feed",
+    title      : "Parametric feed",
     description: "Specifies the feed value that should be output using a Q value.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   showNotes: {
-    title: "Show notes",
+    title      : "Show notes",
     description: "Writes operation notes as comments in the outputted code.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   usePitchForTapping: {
-    title: "Use pitch for tapping",
+    title      : "Use pitch for tapping",
     description: "Enables the use of pitch instead of feed for the F-word in canned tapping cycles. Your CNC control must be setup for pitch mode!",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useG54x4: {
-    title: "Use G54.4",
+    title      : "Use G54.4",
     description: "Use G54.4 workpiece error compensation for angular probing.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   safePositionMethod: {
-    title: "Safe Retracts",
+    title      : "Safe Retracts",
     description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
-    type: "enum",
-    values: [
+    type       : "enum",
+    values     : [
       // {title: "G28", id: "G28"},
-      {title: "G53", id: "G53"},
-      {title: "Clearance Height", id: "clearanceHeight"}
+      {title:"G53", id:"G53"},
+      {title:"Clearance Height", id:"clearanceHeight"}
     ],
     value: "G53",
     scope: "post"
   },
   singleResultsFile: {
-    title: "Create single results file",
+    title      : "Create single results file",
     description: "Set to false if you want to store the measurement results for each probe / inspection toolpath in a separate file",
-    group: 0,
-    type: "boolean",
-    value: true,
-    scope: "post"
+    group      : 0,
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   useClampCodes: {
-    title: "Use clamp codes",
+    title      : "Use clamp codes",
     description: "Specifies whether clamp codes for rotary axes should be output. For simultaneous toolpaths rotary axes will always get unclamped.",
-    type: "boolean",
-    value: false,
-    scope: "post"
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
   },
   useSmoothing: {
-    title:"Use smoothing",
-    description:"Specifies if smoothing should be used.",
-    type:"enum",
-    values:[
+    title      : "Use smoothing",
+    description: "Specifies if smoothing should be used.",
+    type       : "enum",
+    values     : [
       {title:"No", id:"-1"},
       // {title:"Automatic", id:"9999"}
       {title:"Yes", id:"1"},
     ],
-    value:"-1",
+    value: "-1",
     scope: "post"
   },
 };
@@ -182,15 +182,15 @@ var singleLineCoolant = false; // specifies to output multiple coolant codes in 
 // {id: COOLANT_THROUGH_TOOL, on: [8, 88], off: [9, 89]}
 // {id: COOLANT_THROUGH_TOOL, on: "M88 P3 (myComment)", off: "M89"}
 var coolants = [
-  {id: COOLANT_FLOOD, on: 8},
-  {id: COOLANT_MIST, on: 7},
-  {id: COOLANT_THROUGH_TOOL, on: 51},
-  {id: COOLANT_AIR, on: 52},
-  {id: COOLANT_AIR_THROUGH_TOOL, on: 130},
-  {id: COOLANT_SUCTION},
-  {id: COOLANT_FLOOD_MIST},
-  {id: COOLANT_FLOOD_THROUGH_TOOL},
-  {id: COOLANT_OFF, off: 9}
+  {id:COOLANT_FLOOD, on:8},
+  {id:COOLANT_MIST, on:7},
+  {id:COOLANT_THROUGH_TOOL, on:51},
+  {id:COOLANT_AIR, on:52},
+  {id:COOLANT_AIR_THROUGH_TOOL, on:130},
+  {id:COOLANT_SUCTION},
+  {id:COOLANT_FLOOD_MIST},
+  {id:COOLANT_FLOOD_THROUGH_TOOL},
+  {id:COOLANT_OFF, off:9}
 ];
 
 var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-:#";
@@ -246,7 +246,7 @@ var gRotationModal = createModal({
   }
 }, gFormat); // modal group 16 // G68-G69
 var mClampModal = createModalGroup(
-  {strict: false},
+  {strict:false},
   [
     [44, 43], // 4th axis clamp / unclamp
     [47, 46] // 5th axis clamp / unclamp
@@ -266,8 +266,8 @@ var WARNING_WORK_OFFSET = 0;
 var allowIndexingWCSProbing = false; // specifies that probe WCS with tool orientation is supported
 var probeVariables = {
   outputRotationCodes: false, // defines if it is required to output rotation codes
-  probeAngleMethod: "OFF", // OFF, AXIS_ROT, G68, G54.4
-  compensationXY: undefined
+  probeAngleMethod   : "OFF", // OFF, AXIS_ROT, G68, G54.4
+  compensationXY     : undefined
 };
 
 // collected state
@@ -540,7 +540,7 @@ function onOpen() {
       }
     }
   }
-  
+
   if (false) {
     // check for duplicate tool number
     for (var i = 0; i < getNumberOfSections(); ++i) {
@@ -646,24 +646,25 @@ function getOffsetCode() {
 
 // Start of smoothing logic
 var smoothingSettings = {
-  roughing: 1, // roughing level for smoothing in automatic mode
-  semi: 2, // semi-roughing level for smoothing in automatic mode
-  finishing: 3, // finishing level for smoothing in automatic mode
-  thresholdRoughing: toPreciseUnit(0.1, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
+  roughing          : 1, // roughing level for smoothing in automatic mode
+  semi              : 2, // semi-roughing level for smoothing in automatic mode
+  finishing         : 3, // finishing level for smoothing in automatic mode
+  thresholdRoughing : toPreciseUnit(0.1, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
   thresholdFinishing: toPreciseUnit(0.01, MM), // operations with stock/tolerance below that threshold will use finishing level in automatic mode
   differenceCriteria: "level", // options: "level", "tolerance", "both". Specifies criteria when output smoothing codes
-  autoLevelCriteria: "stock", // use "stock" or "tolerance" to determine levels in automatic mode
+  autoLevelCriteria : "stock", // use "stock" or "tolerance" to determine levels in automatic mode
   cancelCompensation: true // tool length compensation must be canceled prior to changing the smoothing level
 };
 
 // collected state below, do not edit
 var smoothing = {
-  isActive: false, // the current state of smoothing
-  isAllowed: false, // smoothing is allowed for this operation
+  cancel     : false, // cancel tool length prior to update smoothing for this operation
+  isActive   : false, // the current state of smoothing
+  isAllowed  : false, // smoothing is allowed for this operation
   isDifferent: false, // tells if smoothing levels/tolerances/both are different between operations
-  level: -1, // the active level of smoothing
-  tolerance: -1, // the current operation tolerance
-  force: false // smoothing needs to be forced out in this operation
+  level      : -1, // the active level of smoothing
+  tolerance  : -1, // the current operation tolerance
+  force      : false // smoothing needs to be forced out in this operation
 };
 
 function initializeSmoothing() {
@@ -674,7 +675,7 @@ function initializeSmoothing() {
   smoothing.level = parseInt(getProperty("useSmoothing"), 10);
   smoothing.level = isNaN(smoothing.level) ? -1 : smoothing.level;
   smoothing.tolerance = Math.max(getParameter("operation:tolerance", 0), 0);
-  
+
   // automatically determine smoothing level
   if (smoothing.level == 9999) {
     if (smoothingSettings.autoLevelCriteria == "stock") { // determine auto smoothing level based on stockToLeave
@@ -695,6 +696,16 @@ function initializeSmoothing() {
     }
   }
 
+  if (smoothing.level == -1) { // useSmoothing is disabled
+    smoothing.isAllowed = false;
+  } else { // do not output smoothing for the following operations
+    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
+  }
+  if (!smoothing.isAllowed) {
+    smoothing.level = -1;
+    smoothing.tolerance = -1;
+  }
+
   switch (smoothingSettings.differenceCriteria) {
   case "level":
     smoothing.isDifferent = smoothing.level != previousLevel;
@@ -710,19 +721,14 @@ function initializeSmoothing() {
     return;
   }
 
-  if (smoothing.level == -1) { // useSmoothing is disabled
-    smoothing.isAllowed = false;
-  } else { // do not output smoothing for the following operations
-    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
-  }
   // tool length compensation needs to be canceled when smoothing state/level changes
   if (smoothingSettings.cancelCompensation) {
-    smoothing.force = smoothing.isActive && smoothing.isDifferent;
+    smoothing.cancel = !isFirstSection() && smoothing.isDifferent;
   }
 }
 
 function setSmoothing(mode) {
-  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent)) {
+  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent) && !smoothing.force) {
     return; // return if smoothing is already active or is not different
   }
   if (typeof lengthCompensationActive != "undefined" && smoothingSettings.cancelCompensation) {
@@ -735,6 +741,8 @@ function setSmoothing(mode) {
     writeBlock(gFormat.format(5), "P0");
   }
   smoothing.isActive = mode;
+  smoothing.force = false;
+  smoothing.isDifferent = false;
 }
 // End of smoothing logic
 
@@ -765,7 +773,7 @@ function getFeed(f) {
 function initializeActiveFeeds() {
   activeMovements = new Array();
   var movements = currentSection.getMovements();
-  
+
   var id = 0;
   var activeFeeds = new Array();
   if (hasParameter("operation:tool_feedCutting")) {
@@ -784,7 +792,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:finishFeedrate")) {
     if (movements & (1 << MOVEMENT_FINISH_CUTTING)) {
       var feedContext = new FeedContext(id, localize("Finish"), getParameter("operation:finishFeedrate"));
@@ -800,7 +808,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:tool_feedEntry")) {
     if (movements & (1 << MOVEMENT_LEAD_IN)) {
       var feedContext = new FeedContext(id, localize("Entry"), getParameter("operation:tool_feedEntry"));
@@ -836,7 +844,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   if (hasParameter("operation:reducedFeedrate")) {
     if (movements & (1 << MOVEMENT_REDUCED)) {
       var feedContext = new FeedContext(id, localize("Reduced"), getParameter("operation:reducedFeedrate"));
@@ -880,7 +888,7 @@ function initializeActiveFeeds() {
     }
     ++id;
   }
-  
+
   for (var i = 0; i < activeFeeds.length; ++i) {
     var feedContext = activeFeeds[i];
     writeBlock("#" + (firstFeedParameter + feedContext.id) + "=" + feedFormat.format(feedContext.feed), formatComment(feedContext.description));
@@ -978,7 +986,7 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane, rotate) {
   } else {
     abc = machineConfiguration.getPreferredABC(abc);
   }
-  
+
   try {
     abc = machineConfiguration.remapABC(abc);
     if (_setWorkPlane) {
@@ -992,12 +1000,12 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane, rotate) {
       + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
     );
   }
-  
+
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
   }
-  
+
   if (!machineConfiguration.isABCSupported(abc)) {
     error(
       localize("Work plane is not supported") + ":"
@@ -1017,7 +1025,7 @@ function getWorkPlaneMachineABC(workPlane, _setWorkPlane, rotate) {
       setRotation(R);
     }
   }
-  
+
   return abc;
 }
 
@@ -1037,7 +1045,7 @@ function onSection() {
   var insertToolCall = isFirstSection() ||
     currentSection.getForceToolChange && currentSection.getForceToolChange() ||
     (tool.number != getPreviousSection().getTool().number);
-  
+
   retracted = false;
   var newWorkOffset = isFirstSection() ||
     (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
@@ -1051,14 +1059,14 @@ function onSection() {
   // define smoothing mode
   initializeSmoothing();
 
-  if (insertToolCall || newWorkOffset || newWorkPlane || smoothing.force) {
+  if (insertToolCall || newWorkOffset || newWorkPlane || smoothing.cancel) {
     // stop spindle before retract during tool change
     if (insertToolCall && !isFirstSection()) {
       onCommand(COMMAND_STOP_SPINDLE);
     }
-    
+
     writeRetract(Z);
-    if ((insertToolCall && !isFirstSection()) || smoothing.force) {
+    if ((insertToolCall && !isFirstSection()) || smoothing.cancel) {
       disableLengthCompensation();
       setSmoothing(false);
     }
@@ -1072,7 +1080,7 @@ function onSection() {
       writeComment(comment);
     }
   }
-  
+
   if (getProperty("showNotes") && hasParameter("notes")) {
     var notes = getParameter("notes");
     if (notes) {
@@ -1087,12 +1095,12 @@ function onSection() {
       }
     }
   }
-  
+
   if (insertToolCall) {
     forceWorkPlane();
-    
+
     setCoolant(COOLANT_OFF);
-  
+
     if (!isFirstSection() && getProperty("optionalStop")) {
       onCommand(COMMAND_OPTIONAL_STOP);
     }
@@ -1137,7 +1145,7 @@ function onSection() {
       }
     }
   }
-  
+
   if (tool.type != TOOL_PROBE &&
       (insertToolCall ||
       forceSpindleSpeed ||
@@ -1145,7 +1153,7 @@ function onSection() {
       (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
       (tool.clockwise != getPreviousSection().getTool().clockwise))) {
     forceSpindleSpeed = false;
-    
+
     if (spindleSpeed < 1) {
       error(localize("Spindle speed out of range."));
       return;
@@ -1204,7 +1212,7 @@ function onSection() {
 
   // set coolant after we have positioned at Z
   setCoolant(tool.coolant);
-  
+
   setSmoothing(smoothing.isAllowed);
 
   forceAny();
@@ -1489,7 +1497,7 @@ function onCyclePoint(x, y, z) {
     if (!isProbeOperation()) {
       repositionToCycleClearance(cycle, x, y, z);
     }
-    
+
     // return to initial Z which is clearance plane and set absolute mode
 
     var F = cycle.feedrate;
@@ -2167,7 +2175,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
       return;
     }
   }
-  
+
   if (pendingRadiusCompensation >= 0) {
     error(localize("Radius compensation cannot be activated/deactivated for a circular move."));
     return;
@@ -2315,14 +2323,14 @@ function getCoolantCodes(coolant) {
 }
 
 var mapCommand = {
-  COMMAND_STOP:0,
-  COMMAND_OPTIONAL_STOP:1,
-  COMMAND_END:2,
-  COMMAND_SPINDLE_CLOCKWISE:3,
-  COMMAND_SPINDLE_COUNTERCLOCKWISE:4,
-  COMMAND_STOP_SPINDLE:5,
-  COMMAND_ORIENTATE_SPINDLE:19,
-  COMMAND_LOAD_TOOL:6
+  COMMAND_STOP                    : 0,
+  COMMAND_OPTIONAL_STOP           : 1,
+  COMMAND_END                     : 2,
+  COMMAND_SPINDLE_CLOCKWISE       : 3,
+  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
+  COMMAND_STOP_SPINDLE            : 5,
+  COMMAND_ORIENTATE_SPINDLE       : 19,
+  COMMAND_LOAD_TOOL               : 6
 };
 
 function onCommand(command) {
@@ -2370,7 +2378,7 @@ function onCommand(command) {
   case COMMAND_PROBE_OFF:
     return;
   }
-  
+
   var stringId = getCommandStringId(command);
   var mcode = mapCommand[stringId];
   if (mcode != undefined) {
@@ -2441,7 +2449,7 @@ function writeRetract() {
   if (gRotationModal.getCurrent() == 68) { // cancel G68 before retracting
     cancelWorkPlane(true);
   }
-  
+
   // define home positions
   var _xHome;
   var _yHome;
@@ -2664,7 +2672,7 @@ function onClose() {
   if (probeVariables.probeAngleMethod == "G54.4") {
     writeBlock(gFormat.format(54.4), "P0");
   }
-  
+
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
