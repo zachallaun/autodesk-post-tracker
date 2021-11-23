@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43499 c7b3c0480b5f1cdae0fadcf8212aac824a5d6261 $
-  $Date: 2021-11-03 14:11:19 $
+  $Revision: 43526 066a0df7890e2e31ca7e85d5b8a1b2369ca46192 $
+  $Date: 2021-11-22 19:37:32 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -1312,12 +1312,13 @@ var smoothingSettings = {
   thresholdSemiFinishing: toPreciseUnit(0.1, MM), // operations with stock/tolerance above finishing and below threshold roughing that threshold will use semi finishing level in automatic mode
 
   differenceCriteria: "level", // options: "level", "tolerance", "both". Specifies criteria when output smoothing codes
-  autoLevelCriteria : "stock", // use "stock"  or "tolerance" to determine levels in automatic mode
+  autoLevelCriteria : "stock", // use "stock" or "tolerance" to determine levels in automatic mode
   cancelCompensation: false // tool length compensation must be canceled prior to changing the smoothing level
 };
 
 // collected state below, do not edit
 var smoothing = {
+  cancel     : false, // cancel tool length prior to update smoothing for this operation
   isActive   : false, // the current state of smoothing
   isAllowed  : false, // smoothing is allowed for this operation
   isDifferent: false, // tells if smoothing levels/tolerances/both are different between operations
@@ -1369,6 +1370,16 @@ function initializeSmoothing() {
       }
     }
   }
+  if (smoothing.level == -1) { // useSmoothing is disabled
+    smoothing.isAllowed = false;
+  } else { // do not output smoothing for the following operations
+    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
+  }
+  if (!smoothing.isAllowed) {
+    smoothing.level = -1;
+    smoothing.tolerance = -1;
+  }
+
   switch (smoothingSettings.differenceCriteria) {
   case "level":
     smoothing.isDifferent = smoothing.level != previousLevel;
@@ -1384,14 +1395,9 @@ function initializeSmoothing() {
     return;
   }
 
-  if (smoothing.level == -1) { // useSmoothing is disabled
-    smoothing.isAllowed = false;
-  } else { // do not output smoothing for the following operations
-    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
-  }
   // tool length compensation needs to be canceled when smoothing state/level changes
   if (smoothingSettings.cancelCompensation) {
-    smoothing.force = smoothing.isActive && smoothing.isDifferent;
+    smoothing.cancel = !isFirstSection() && smoothing.isDifferent;
   }
 }
 
