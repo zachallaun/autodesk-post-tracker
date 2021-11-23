@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43526 066a0df7890e2e31ca7e85d5b8a1b2369ca46192 $
-  $Date: 2021-11-22 19:37:32 $
+  $Revision: 43527 70db1f83e60040944d9bc4849cec14e6afc5e762 $
+  $Date: 2021-11-23 16:51:12 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -28,7 +28,7 @@ vendor = "Haas Automation";
 vendorUrl = "https://www.haascnc.com";
 legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45702;
+minimumRevision = 45793;
 
 longDescription = "Generic post for the HAAS Next Generation control. The post includes support for multi-axis indexing and simultaneous machining. The post utilizes the dynamic work offset feature so you can place your work piece as desired without having to repost your NC programs." + EOL +
 "You can specify following pre-configured machines by using the property 'Machine model':" + EOL +
@@ -116,7 +116,7 @@ properties = {
     value      : false,
     scope      : "post"
   },
-  useTCPC: {
+  useTCP: {
     title      : "Use TCPC programming",
     description: "The control supports Tool Center Point Control programming.",
     group      : 1,
@@ -124,7 +124,7 @@ properties = {
     value      : true,
     scope      : "post"
   },
-  useDWO: {
+  useMultiAxisFeatures: {
     title      : "Use DWO",
     description: "Specifies that the Dynamic Work Offset feature (G254/G255) should be used.",
     group      : 1,
@@ -704,7 +704,7 @@ function prepareForToolCheck() {
   onCommand(COMMAND_COOLANT_OFF);
 
   // cancel TCP so that tool doesn't follow tables
-  if (currentSection.isMultiAxis() && tcpIsSupported) {
+  if (currentSection.isMultiAxis() && operationSupportsTCP) {
     disableLengthCompensation(false, "TCPC OFF");
   }
   if ((currentSection.isMultiAxis() && getCurrentDirection().length != 0) ||
@@ -756,11 +756,11 @@ function writeToolMeasureBlock(tool, preMeasure) {
 }
 
 function defineMachineModel() {
-  var useTCPC = getProperty("useTCPC");
+  var useTCP = getProperty("useTCP");
   switch (getProperty("machineModel")) {
   case "umc-500":
-    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCPC});
-    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCPC});
+    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCP});
+    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCP});
     machineConfiguration = new MachineConfiguration(axis1, axis2);
     machineConfiguration.setHomePositionX(toPreciseUnit(-23.96, IN));
     machineConfiguration.setHomePositionY(toPreciseUnit(-3.37, IN));
@@ -768,8 +768,8 @@ function defineMachineModel() {
     maximumSpindleRPM = 8100;
     break;
   case "umc-750":
-    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCPC});
-    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCPC});
+    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCP});
+    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCP});
     machineConfiguration = new MachineConfiguration(axis1, axis2);
     machineConfiguration.setHomePositionX(toPreciseUnit(-29.0, IN));
     machineConfiguration.setHomePositionY(toPreciseUnit(-8, IN));
@@ -777,8 +777,8 @@ function defineMachineModel() {
     maximumSpindleRPM = 8100;
     break;
   case "umc-1000":
-    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCPC});
-    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCPC});
+    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-35, 120], preference:1, tcp:useTCP});
+    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCP});
     machineConfiguration = new MachineConfiguration(axis1, axis2);
     machineConfiguration.setHomePositionX(toPreciseUnit(-40.07, IN));
     machineConfiguration.setHomePositionY(toPreciseUnit(-10.76, IN));
@@ -786,8 +786,8 @@ function defineMachineModel() {
     maximumSpindleRPM = 8100;
     break;
   case "umc-1600":
-    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-120, 120], preference:1, tcp:useTCPC});
-    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCPC});
+    var axis1 = createAxis({coordinate:1, table:true, axis:[0, 1, 0], range:[-120, 120], preference:1, tcp:useTCP});
+    var axis2 = createAxis({coordinate:2, table:true, axis:[0, 0, 1], cyclic:true, preference:0, reset:1, tcp:useTCP});
     machineConfiguration = new MachineConfiguration(axis1, axis2);
     machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
     machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
@@ -810,25 +810,11 @@ var compensateToolLength = false; // add the tool length to the pivot distance f
 var virtualTooltip = false; // translate the pivot point to the virtual tool tip for nonTCP rotary heads
 // internal variables, do not change
 var receivedMachineConfiguration;
-var tcpIsSupported;
+var operationSupportsTCP;
+var multiAxisFeedrate;
 
 function activateMachine() {
-  // determine if TCP is supported by the machine
-  tcpIsSupported = false;
-  var axes = [machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW()];
-  for (var i in axes) {
-    if (axes[i].isEnabled() && axes[i].isTCPEnabled()) {
-      tcpIsSupported = true;
-      break;
-    }
-  }
-
-  // setup usage of multiAxisFeatures
-  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
-    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
-  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
-    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
-
+  // disable unsupported rotary axes output
   if (!machineConfiguration.isMachineCoordinate(0) && (typeof aOutput != "undefined")) {
     aOutput.disable();
   }
@@ -839,56 +825,57 @@ function activateMachine() {
     cOutput.disable();
   }
 
+  // setup usage of multiAxisFeatures
+  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
+    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
+  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
+    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
+
+  // don't need to modify any settings if 3-axis machine
   if (!machineConfiguration.isMultiAxisConfiguration()) {
-    return; // don't need to modify any settings for 3-axis machines
+    return;
   }
 
-  // retract/reconfigure
-  safeRetractDistance = getProperty("safeRetractDistance") != undefined ? getProperty("safeRetractDistance") :
-    (typeof safeRetractDistance == "number" ? safeRetractDistance : 0);
-  if (machineConfiguration.performRewinds() || (typeof performRewinds == "undefined" ? false : performRewinds)) {
-    machineConfiguration.enableMachineRewinds(); // enables the rewind/reconfigure logic
-    if (typeof stockExpansion != "undefined") {
-      machineConfiguration.setRewindStockExpansion(stockExpansion);
-      if (!receivedMachineConfiguration) {
-        setMachineConfiguration(machineConfiguration);
-      }
-    }
+  // save multi-axis feedrate settings from machine configuration
+  var mode = machineConfiguration.getMultiAxisFeedrateMode();
+  var type = mode == FEED_INVERSE_TIME ? machineConfiguration.getMultiAxisFeedrateInverseTimeUnits() :
+    (mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateDPMType() : DPM_STANDARD);
+  multiAxisFeedrate = {
+    mode     : mode,
+    maximum  : machineConfiguration.getMultiAxisFeedrateMaximum(),
+    type     : type,
+    tolerance: mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateOutputTolerance() : 0,
+    bpwRatio : mode == FEED_DPM ? machineConfiguration.getMultiAxisFeedrateBpwRatio() : 1
+  };
+
+  // setup of retract/reconfigure  TAG: Only needed until post kernel supports these machine config settings
+  if (receivedMachineConfiguration && machineConfiguration.performRewinds()) {
+    safeRetractDistance = machineConfiguration.getSafeRetractDistance();
+    safePlungeFeed = machineConfiguration.getSafePlungeFeedrate();
+    safeRetractFeed = machineConfiguration.getSafeRetractFeedrate();
+  }
+  if (typeof safeRetractDistance == "number" && getProperty("safeRetractDistance") != undefined && getProperty("safeRetractDistance") != 0) {
+    safeRetractDistance = getProperty("safeRetractDistance");
   }
 
+  // setup for head configurations
   if (machineConfiguration.isHeadConfiguration()) {
     compensateToolLength = typeof compensateToolLength == "undefined" ? false : compensateToolLength;
-    virtualTooltip = typeof virtualTooltip == "undefined" ? false : virtualTooltip;
-    machineConfiguration.setVirtualTooltip(virtualTooltip);
   }
-  setFeedrateMode();
 
+  // calculate the ABC angles and adjust the points for multi-axis operations
+  // rotary heads may require the tool length be added to the pivot length
+  // so we need to optimize each section individually
   if (machineConfiguration.isHeadConfiguration() && compensateToolLength) {
     for (var i = 0; i < getNumberOfSections(); ++i) {
       var section = getSection(i);
       if (section.isMultiAxis()) {
         machineConfiguration.setToolLength(getBodyLength(section.getTool())); // define the tool length for head adjustments
-        section.optimizeMachineAnglesByMachine(machineConfiguration, tcpIsSupported ? 0 : 1);
+        section.optimizeMachineAnglesByMachine(machineConfiguration, OPTIMIZE_AXIS);
       }
     }
-  } else {
-    optimizeMachineAngles2(tcpIsSupported ? 0 : 1);
-  }
-}
-
-function setFeedrateMode(reset) {
-  if ((tcpIsSupported && !reset) || !machineConfiguration.isMultiAxisConfiguration()) {
-    return;
-  }
-  machineConfiguration.setMultiAxisFeedrate(
-    tcpIsSupported ? FEED_FPM : getProperty("useDPMFeeds") ? FEED_DPM : FEED_INVERSE_TIME,
-    9999.99, // maximum output value for inverse time feed rates
-    INVERSE_MINUTES, // can be INVERSE_SECONDS or DPM_COMBINATION for DPM feeds
-    0.5, // tolerance to determine when the DPM feed has changed
-    1.0 // ratio of rotary accuracy to linear accuracy for DPM calculations
-  );
-  if (!receivedMachineConfiguration || (revision < 45765)) {
-    setMachineConfiguration(machineConfiguration);
+  } else { // tables and rotary heads with TCP support can be optimized with a single call
+    optimizeMachineAngles2(OPTIMIZE_AXIS);
   }
 }
 
@@ -907,6 +894,7 @@ function defineMachine() {
   hasB = getProperty("hasBAxis") != "false";
   hasC = getProperty("hasCAxis") != "false";
 
+  var useTCP = getProperty("useTCP");
   if (hasA && hasB && hasC) {
     error(localize("Only two rotary axes can be active at the same time."));
     return;
@@ -922,15 +910,14 @@ function defineMachine() {
       var aAxis;
       var bAxis;
       var cAxis;
-      var useTCPC = getProperty("useTCPC");
       if (hasA) { // A Axis - For horizontal machines and trunnions
         var dir = getProperty("hasAAxis") == "reversed" ? -1 : 1;
         if (hasC || hasB) {
           var aMin = (dir == 1) ? -120 - 0.0001 : -30 - 0.0001;
           var aMax = (dir == 1) ? 30 + 0.0001 : 120 + 0.0001;
-          aAxis = createAxis({coordinate:0, table:true, axis:[dir, 0, 0], range:[aMin, aMax], preference:dir, reset:(hasB ? 0 : 1), tcp:useTCPC});
+          aAxis = createAxis({coordinate:0, table:true, axis:[dir, 0, 0], range:[aMin, aMax], preference:dir, reset:(hasB ? 0 : 1), tcp:useTCP});
         } else {
-          aAxis = createAxis({coordinate:0, table:true, axis:[dir, 0, 0], cyclic:true, tcp:useTCPC});
+          aAxis = createAxis({coordinate:0, table:true, axis:[dir, 0, 0], cyclic:true, tcp:useTCP});
         }
       }
 
@@ -939,17 +926,17 @@ function defineMachine() {
         if (hasC) {
           var bMin = (dir == 1) ? -120 - 0.0001 : -30 - 0.0001;
           var bMax = (dir == 1) ? 30 + 0.0001 : 120 + 0.0001;
-          bAxis = createAxis({coordinate:1, table:true, axis:[0, dir, 0], range:[bMin, bMax], preference:-dir, reset:1, tcp:useTCPC});
+          bAxis = createAxis({coordinate:1, table:true, axis:[0, dir, 0], range:[bMin, bMax], preference:-dir, reset:1, tcp:useTCP});
         } else if (hasA) {
-          bAxis = createAxis({coordinate:1, table:true, axis:[0, 0, dir], cyclic:true, tcp:useTCPC});
+          bAxis = createAxis({coordinate:1, table:true, axis:[0, 0, dir], cyclic:true, tcp:useTCP});
         } else {
-          bAxis = createAxis({coordinate:1, table:true, axis:[0, dir, 0], cyclic:true, tcp:useTCPC});
+          bAxis = createAxis({coordinate:1, table:true, axis:[0, dir, 0], cyclic:true, tcp:useTCP});
         }
       }
 
       if (hasC) { // C Axis - For trunnions only
         var dir = getProperty("hasCAxis") == "reversed" ? -1 : 1;
-        cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, dir], cyclic:true, reset:1, tcp:useTCPC});
+        cAxis = createAxis({coordinate:2, table:true, axis:[0, 0, dir], cyclic:true, reset:1, tcp:useTCP});
       }
 
       if (hasA && hasC) { // AC trunnion
@@ -974,16 +961,44 @@ function defineMachine() {
   } else {
     defineMachineModel();
   }
-  /* home positions */
-  // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
-  // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
-  // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+
+  if (!receivedMachineConfiguration) {
+    // retract / reconfigure
+    var performRewinds = false; // set to true to enable the rewind/reconfigure logic
+    if (performRewinds) {
+      machineConfiguration.enableMachineRewinds(); // enables the retract/reconfigure logic
+      safeRetractDistance = (unit == IN) ? 1 : 25; // additional distance to retract out of stock, can be overridden with a property
+      safeRetractFeed = (unit == IN) ? 20 : 500; // retract feed rate
+      safePlungeFeed = (unit == IN) ? 10 : 250; // plunge feed rate
+      machineConfiguration.setSafeRetractDistance(safeRetractDistance);
+      machineConfiguration.setSafeRetractFeedrate(safeRetractFeed);
+      machineConfiguration.setSafePlungeFeedrate(safePlungeFeed);
+      var stockExpansion = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN)); // expand stock XYZ values
+      machineConfiguration.setRewindStockExpansion(stockExpansion);
+    }
+
+    // multi-axis feedrates
+    if (machineConfiguration.isMultiAxisConfiguration()) {
+      machineConfiguration.setMultiAxisFeedrate(
+        useTCP ? FEED_FPM : getProperty("useDPMFeeds") ? FEED_DPM : FEED_INVERSE_TIME,
+        9999.99, // maximum output value for inverse time feed rates
+        getProperty("useDPMFeeds") ? DPM_COMBINATION : INVERSE_MINUTES, // INVERSE_MINUTES/INVERSE_SECONDS or DPM_COMBINATION/DPM_STANDARD
+        0.5, // tolerance to determine when the DPM feed has changed
+        1.0 // ratio of rotary accuracy to linear accuracy for DPM calculations
+      );
+      setMachineConfiguration(machineConfiguration);
+    }
+
+    /* home positions */
+    // machineConfiguration.setHomePositionX(toPreciseUnit(0, IN));
+    // machineConfiguration.setHomePositionY(toPreciseUnit(0, IN));
+    // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
+  }
 }
 // End of machine configuration logic
 
 function onOpen() {
-  receivedMachineConfiguration = (typeof machineConfiguration.isReceived == "function") ? machineConfiguration.isReceived() :
-    ((machineConfiguration.getDescription() != "") || machineConfiguration.isMultiAxisConfiguration());
+  receivedMachineConfiguration = machineConfiguration.isReceived();
   if (typeof defineMachine == "function") {
     defineMachine(); // hardcoded machine configuration
   }
@@ -998,7 +1013,7 @@ function onOpen() {
   if (getProperty("sequenceNumberOnlyOnToolChange")) {
     setProperty("showSequenceNumbers", false);
   }
-  if (!getProperty("useDWO")) {
+  if (!getProperty("useMultiAxisFeatures")) {
     useDwoForPositioning = false;
   }
 
@@ -1175,7 +1190,7 @@ function onOpen() {
     writeln("");
   }
 
-  if (false /*getProperty("useDWO")*/) {
+  if (false /*getProperty("useMultiAxisFeatures")*/) {
     var failed = false;
     var dynamicWCSs = {};
     for (var i = 0; i < getNumberOfSections(); ++i) {
@@ -1610,6 +1625,9 @@ function defineWorkPlane(_section, _setWorkPlane) {
     }
     setRotation(remaining);
   }
+  if (currentSection && (currentSection.getId() == _section.getId())) {
+    operationSupportsTCP = (_section.isMultiAxis() || !useMultiAxisFeatures) && _section.getOptimizedTCPMode() == OPTIMIZE_NONE;
+  }
   return abc;
 }
 
@@ -1651,7 +1669,7 @@ function setWorkPlane(abc) {
     onCommand(COMMAND_LOCK_MULTI_AXIS);
   }
 
-  if (getProperty("useDWO") &&
+  if (getProperty("useMultiAxisFeatures") &&
       (abcFormat.isSignificant(abc.x % (Math.PI * 2)) || abcFormat.isSignificant(abc.y % (Math.PI * 2)) || abcFormat.isSignificant(abc.z % (Math.PI * 2)))) {
     skipBlock = _skipBlock;
     activeG254 = true;
@@ -2426,7 +2444,7 @@ function onSection() {
     writeBlock(gPlaneModal.format(17));
 
     if (!machineConfiguration.isHeadConfiguration()) {
-      if (tcpIsSupported && useDwoForPositioning && currentSection.isMultiAxis()) {
+      if (operationSupportsTCP && useDwoForPositioning && currentSection.isMultiAxis()) {
         prepositionDWO(initialPosition, abc, skipBlock);
       } else {
         skipBlock = _skipBlock;
@@ -2434,8 +2452,8 @@ function onSection() {
         skipBlock = _skipBlock;
         writeBlock(
           gMotionModal.format(0),
-          conditional(!currentSection.isMultiAxis() || !tcpIsSupported, gFormat.format(43)),
-          conditional(currentSection.isMultiAxis() && tcpIsSupported, gFormat.format(234)),
+          conditional(!currentSection.isMultiAxis() || !operationSupportsTCP, gFormat.format(43)),
+          conditional(currentSection.isMultiAxis() && operationSupportsTCP, gFormat.format(234)),
           zOutput.format(initialPosition.z),
           hFormat.format(lengthOffset)
         );
@@ -2444,9 +2462,9 @@ function onSection() {
       skipBlock = _skipBlock;
       writeBlock(
         gAbsIncModal.format(90),
-        gMotionModal.format(currentSection.isMultiAxis() && tcpIsSupported ? 0 : G),
-        conditional(!currentSection.isMultiAxis() || !tcpIsSupported, gFormat.format(43)),
-        conditional(currentSection.isMultiAxis() && tcpIsSupported, gFormat.format(234)),
+        gMotionModal.format(currentSection.isMultiAxis() && operationSupportsTCP ? 0 : G),
+        conditional(!currentSection.isMultiAxis() || !operationSupportsTCP, gFormat.format(43)),
+        conditional(currentSection.isMultiAxis() && operationSupportsTCP, gFormat.format(234)),
         xOutput.format(initialPosition.x),
         yOutput.format(initialPosition.y),
         zOutput.format(initialPosition.z),
@@ -2698,7 +2716,7 @@ function onCyclePoint(x, y, z) {
       if (!allowIndexingWCSProbing && currentSection.strategy == "probe") {
         error(localize("Updating WCS / work offset using probing is only supported by the CNC in the WCS frame."));
         return;
-      } else if (getProperty("useDWO")) {
+      } else if (getProperty("useMultiAxisFeatures")) {
         error(localize("Your machine does not support the selected probing operation with DWO enabled."));
         return;
       }
@@ -3464,7 +3482,7 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
     ((bOutput.isEnabled() && abcFormat.areDifferent(_b, bOutput.getCurrent())) ? 1 : 0) +
     ((cOutput.isEnabled() && abcFormat.areDifferent(_c, cOutput.getCurrent())) ? 1 : 0);
   /*
-  if (!getProperty("useG0") && !forceG0 && (tcpIsSupported || (num > 1))) {
+  if (!getProperty("useG0") && !forceG0 && (operationSupportsTCP || (num > 1))) {
     invokeOnLinear5D(_x, _y, _z, _a, _b, _c, highFeedrate); // onLinear5D handles inverse time feedrates
     forceG0 = false;
     return;
@@ -3478,7 +3496,7 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   var c = cOutput.format(_c);
 
   if (x || y || z || a || b || c) {
-    if (!getProperty("useG0") && (tcpIsSupported || (num > 1))) {
+    if (!getProperty("useG0") && (operationSupportsTCP || (num > 1))) {
       // axes are not synchronized
       writeBlock(gFeedModeModal.format(94), gMotionModal.format(1), x, y, z, a, b, c, getFeed(highFeedrate));
     } else {
@@ -3534,12 +3552,6 @@ function moveToSafeRetractPosition(isRetracted) {
 }
 
 // Start of onRewindMachine logic
-var performRewinds = false; // only use this setting with hardcoded machine configurations, set to true to enable the rewind/reconfigure logic
-var stockExpansion = new Vector(toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN), toPreciseUnit(0.1, IN)); // expand stock XYZ values
-safeRetractDistance = (unit == IN) ? 1 : 25; // additional distance to retract out of stock
-safeRetractFeed = (unit == IN) ? 20 : 500; // retract feed rate
-safePlungeFeed = (unit == IN) ? 10 : 250; // plunge feed rate
-
 /** Allow user to override the onRewind logic. */
 function onRewindMachineEntry(_a, _b, _c) {
   return false;
@@ -3548,7 +3560,7 @@ function onRewindMachineEntry(_a, _b, _c) {
 /** Retract to safe position before indexing rotaries. */
 function onMoveToSafeRetractPosition() {
   // cancel TCP so that tool doesn't follow rotaries
-  if (currentSection.isMultiAxis() && tcpIsSupported) {
+  if (currentSection.isMultiAxis() && operationSupportsTCP) {
     disableLengthCompensation(false, "TCPC OFF");
   }
   moveToSafeRetractPosition(false);
@@ -3572,7 +3584,7 @@ function onRotateAxes(_x, _y, _z, _a, _b, _c) {
 /** Return from safe position after indexing rotaries. */
 function onReturnFromSafeRetractPosition(_x, _y, _z) {
   // reinstate TCP
-  if (tcpIsSupported) {
+  if (operationSupportsTCP) {
     if (useDwoForPositioning) {
       prepositionDWO(new Vector(_x, _y, _z), getCurrentDirection(), false);
     } else {
@@ -3598,14 +3610,12 @@ function onReturnFromSafeRetractPosition(_x, _y, _z) {
 // Start of polar interpolation
 var usePolarMode = false; // controlled by manual NC operation, enables polar interpolation for a single operation
 var polarDirection = new Vector(1, 0, 0); // vector to maintain tool at while in polar interpolation
-var saveTcpIsSupported = undefined;
 function setPolarMode(section, mode) {
   if (!mode) { // turn off polar mode if required
     if (isPolarModeActive()) {
       currentMachineABC = getCurrentDirection();
       deactivatePolarMode();
-      tcpIsSupported = saveTcpIsSupported;
-      setFeedrateMode(true);
+      setPolarFeedMode(false);
       usePolarMode = false;
     }
     return;
@@ -3643,13 +3653,26 @@ function setPolarMode(section, mode) {
   direction = Vector.cross(axis.getAxis(), temp).getNormalized();
 
   // activate polar interpolation
-  saveTcpIsSupported = tcpIsSupported;
-  tcpIsSupported = false; // temporary disable tcp support for polar mode
-  setFeedrateMode();
+  setPolarFeedMode(true); // enable multi-axis feeds for polar mode
   activatePolarMode(tolerance / 2, 0, direction);
   var polarPosition = getPolarPosition(section.getInitialPosition().x, section.getInitialPosition().y, section.getInitialPosition().z);
   setCurrentPositionAndDirection(polarPosition);
   forceWorkPlane();
+}
+
+function setPolarFeedMode(mode) {
+  if (machineConfiguration.isMultiAxisConfiguration()) {
+    machineConfiguration.setMultiAxisFeedrate(
+      !mode ? multiAxisFeedrate.mode : getProperty("useDPMFeeds") ? FEED_DPM : FEED_INVERSE_TIME,
+      multiAxisFeedrate.maximum,
+      !mode ? multiAxisFeedrate.type : getProperty("useDPMFeeds") ? DPM_COMBINATION : INVERSE_MINUTES,
+      multiAxisFeedrate.tolerance,
+      multiAxisFeedrate.bpwRatio
+    );
+    if (!receivedMachineConfiguration) {
+      setMachineConfiguration(machineConfiguration);
+    }
+  }
 }
 // End of polar interpolation
 
@@ -3967,7 +3990,7 @@ function onSectionEnd() {
       // the code below gets the machine angles from previous operation.  closestABC must also be set to true
       currentMachineABC = currentSection.getFinalToolAxisABC();
     }
-    if (tcpIsSupported) {
+    if (operationSupportsTCP) {
       disableLengthCompensation(false, "TCPC OFF");
     }
   }
