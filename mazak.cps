@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43526 066a0df7890e2e31ca7e85d5b8a1b2369ca46192 $
-  $Date: 2021-11-22 19:37:32 $
+  $Revision: 43532 953e9052f83a5e7ebe58d54b0f5357eca5369a48 $
+  $Date: 2021-11-25 13:38:02 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -174,6 +174,15 @@ properties = {
     value: "-1",
     scope: "post"
   },
+};
+
+// wcs definiton
+wcsDefinitions = {
+  useZeroOffset: false,
+  wcs          : [
+    {name:"Standard", format:"G", range:[54, 59]},
+    {name:"Extended", format:"G54.1 P", range:[1, 48]}
+  ]
 };
 
 var singleLineCoolant = false; // specifies to output multiple coolant codes in one line rather than in separate lines
@@ -1174,35 +1183,14 @@ function onSection() {
   if (insertToolCall) { // force work offset when changing tool
     currentWorkOffset = undefined;
   }
-  var workOffset = currentSection.workOffset;
-  if (workOffset == 0) {
-    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
-    workOffset = 1;
-  }
-  if (workOffset != currentWorkOffset) {
+
+  if (currentSection.workOffset != currentWorkOffset) {
     if (cancelTiltFirst) {
       cancelWorkPlane();
     }
     forceWorkPlane();
-  }
-  // alternatively use 54.2
-  if (workOffset > 0) {
-    if (workOffset > 6) {
-      var code = workOffset - 6;
-      if (code > 48) {
-        error(localize("Work offset out of range."));
-        return;
-      }
-      if (workOffset != currentWorkOffset) {
-        writeBlock(gFormat.format(54.1), "P" + code);
-        currentWorkOffset = workOffset;
-      }
-    } else {
-      if (workOffset != currentWorkOffset) {
-        writeBlock(gFormat.format(53 + workOffset)); // G54->G59
-        currentWorkOffset = workOffset;
-      }
-    }
+    writeBlock(currentSection.wcs);
+    currentWorkOffset = currentSection.workOffset;
   }
 
   forceXYZ();
