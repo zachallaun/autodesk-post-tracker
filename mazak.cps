@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43532 953e9052f83a5e7ebe58d54b0f5357eca5369a48 $
-  $Date: 2021-11-25 13:38:02 $
+  $Revision: 43554 a19c569c9f7fe055fc222095112d3f1eebc74b63 $
+  $Date: 2021-12-02 17:56:05 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -174,15 +174,6 @@ properties = {
     value: "-1",
     scope: "post"
   },
-};
-
-// wcs definiton
-wcsDefinitions = {
-  useZeroOffset: false,
-  wcs          : [
-    {name:"Standard", format:"G", range:[54, 59]},
-    {name:"Extended", format:"G54.1 P", range:[1, 48]}
-  ]
 };
 
 var singleLineCoolant = false; // specifies to output multiple coolant codes in one line rather than in separate lines
@@ -1183,14 +1174,35 @@ function onSection() {
   if (insertToolCall) { // force work offset when changing tool
     currentWorkOffset = undefined;
   }
-
-  if (currentSection.workOffset != currentWorkOffset) {
+  var workOffset = currentSection.workOffset;
+  if (workOffset == 0) {
+    warningOnce(localize("Work offset has not been specified. Using G54 as WCS."), WARNING_WORK_OFFSET);
+    workOffset = 1;
+  }
+  if (workOffset != currentWorkOffset) {
     if (cancelTiltFirst) {
       cancelWorkPlane();
     }
     forceWorkPlane();
-    writeBlock(currentSection.wcs);
-    currentWorkOffset = currentSection.workOffset;
+  }
+  // alternatively use 54.2
+  if (workOffset > 0) {
+    if (workOffset > 6) {
+      var code = workOffset - 6;
+      if (code > 48) {
+        error(localize("Work offset out of range."));
+        return;
+      }
+      if (workOffset != currentWorkOffset) {
+        writeBlock(gFormat.format(54.1), "P" + code);
+        currentWorkOffset = workOffset;
+      }
+    } else {
+      if (workOffset != currentWorkOffset) {
+        writeBlock(gFormat.format(53 + workOffset)); // G54->G59
+        currentWorkOffset = workOffset;
+      }
+    }
   }
 
   forceXYZ();
@@ -2415,7 +2427,7 @@ function writeRetract() {
   var method = getProperty("safePositionMethod");
   if (method == "clearanceHeight") {
     if (!is3D()) {
-      error(localize("Retract option 'Clearance Height' is not supported for multi-axis machining."));
+      error(localize("Safe retract option 'Clearance Height' is only supported when all operations are along the setup Z-axis."));
     }
     return;
   }
