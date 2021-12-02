@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43527 70db1f83e60040944d9bc4849cec14e6afc5e762 $
-  $Date: 2021-11-23 16:51:12 $
+  $Revision: 43554 a19c569c9f7fe055fc222095112d3f1eebc74b63 $
+  $Date: 2021-12-02 17:56:05 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -4017,10 +4017,9 @@ function writeRetract() {
   var method = getProperty("safePositionMethod");
   if (method == "clearanceHeight") {
     if (!is3D()) {
-      error(localize("Retract option 'Clearance Height' is not supported for multi-axis machining."));
-    } else {
-      return;
+      error(localize("Safe retract option 'Clearance Height' is only supported when all operations are along the setup Z-axis."));
     }
+    return;
   }
   validate(arguments.length != 0, "No axis specified for writeRetract().");
 
