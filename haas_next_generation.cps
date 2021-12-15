@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43554 a19c569c9f7fe055fc222095112d3f1eebc74b63 $
-  $Date: 2021-12-02 17:56:05 $
+  $Revision: 43567 9c2650b07f033f60a13439686d3e2ce8ac0f7872 $
+  $Date: 2021-12-15 14:21:14 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -461,7 +461,8 @@ var gFormat = createFormat({prefix:"G", decimals:0});
 var mFormat = createFormat({prefix:"M", decimals:0});
 var hFormat = createFormat({prefix:"H", decimals:0});
 var dFormat = createFormat({prefix:"D", decimals:0});
-var probeWCSFormat = createFormat({decimals:2, forceDecimal:true});
+var probeWCSFormat = createFormat({prefix:"S", decimals:0, forceDecimal:true});
+var probeExtWCSFormat = createFormat({prefix:"S154.", width:2, zeropad:true, decimals:0});
 
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
 var rFormat = xyzFormat; // radius
@@ -3360,7 +3361,10 @@ function onCyclePoint(x, y, z) {
 function getProbingArguments(cycle, updateWCS) {
   var outputWCSCode = updateWCS && currentSection.strategy == "probe";
   if (outputWCSCode) {
-    validate(probeOutputWorkOffset <= 99, "Work offset is out of range.");
+    validate(
+      probeOutputWorkOffset > 0 && (probeOutputWorkOffset > 6 ? probeOutputWorkOffset - 6 : probeOutputWorkOffset) <= 99,
+      "Work offset is out of range."
+    );
     var nextWorkOffset = hasNextSection() ? getNextSection().workOffset == 0 ? 1 : getNextSection().workOffset : -1;
     if (probeOutputWorkOffset == nextWorkOffset) {
       currentWorkOffset = undefined;
@@ -3375,7 +3379,7 @@ function getProbingArguments(cycle, updateWCS) {
     ((cycle.updateToolWear && cycleType !== "probing-z") ? "T" + xyzFormat.format(cycle.toolDiameterOffset) : undefined),
     (cycle.updateToolWear ? "V" + xyzFormat.format(cycle.toolWearUpdateThreshold ? cycle.toolWearUpdateThreshold : 0) : undefined),
     (cycle.printResults ? "W" + xyzFormat.format(1 + cycle.incrementComponent) : undefined), // 1 for advance feature, 2 for reset feature count and advance component number. first reported result in a program should use W2.
-    conditional(outputWCSCode, "S" + probeWCSFormat.format(probeOutputWorkOffset > 6 ? (0.01 * (probeOutputWorkOffset - 6) + 154) : probeOutputWorkOffset))
+    conditional(outputWCSCode, (probeOutputWorkOffset > 6 ? probeExtWCSFormat.format((probeOutputWorkOffset - 6)) : probeWCSFormat.format(probeOutputWorkOffset)))
   ];
 }
 
