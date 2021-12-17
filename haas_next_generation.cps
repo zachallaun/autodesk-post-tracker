@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43567 9c2650b07f033f60a13439686d3e2ce8ac0f7872 $
-  $Date: 2021-12-15 14:21:14 $
+  $Revision: 43574 c3b87d29b63f89884774d96ae3cf75408ec5baad $
+  $Date: 2021-12-17 16:33:44 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -1676,8 +1676,6 @@ function setWorkPlane(abc) {
     activeG254 = true;
     writeBlock(gFormat.format(254)); // enable DWO
   }
-
-  setCurrentABC(abc); // required for machine simulation
   currentWorkPlaneABC = abc;
 }
 
@@ -1703,7 +1701,9 @@ function positionABC(abc, force) {
     gMotionModal.reset();
     writeBlock(gMotionModal.format(0), a, b, c);
     currentMachineABC = new Vector(abc);
-    setCurrentABC(abc); // required for machine simulation
+    if (getCurrentSectionId() != -1) {
+      setCurrentABC(abc); // required for machine simulation
+    }
   }
 }
 
