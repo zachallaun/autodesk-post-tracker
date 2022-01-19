@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2021 by Autodesk, Inc.
+  Copyright (C) 2012-2022 by Autodesk, Inc.
   All rights reserved.
 
   HAAS post processor configuration.
 
-  $Revision: 43574 c3b87d29b63f89884774d96ae3cf75408ec5baad $
-  $Date: 2021-12-17 16:33:44 $
+  $Revision: 43598 caa307e97aec7383716a8710c8d2607d913f9eb8 $
+  $Date: 2022-01-19 17:19:20 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -26,7 +26,7 @@
 description = "HAAS - Next Generation Control";
 vendor = "Haas Automation";
 vendorUrl = "https://www.haascnc.com";
-legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 45793;
 
@@ -1017,6 +1017,12 @@ function onOpen() {
   if (!getProperty("useMultiAxisFeatures")) {
     useDwoForPositioning = false;
   }
+  if (getProperty("useLiveConnection")) {
+    if (getProperty("showSequenceNumbers")) {
+      warning(localize("'Use sequence numbers' is switched off due to live connection."));
+    }
+    setProperty("showSequenceNumbers", false);
+  }
 
   gRotationModal.format(69); // Default to G69 Rotation Off
   ssvModal.format(139); // Default to M139 SSV turned off
@@ -1275,6 +1281,9 @@ function onOpen() {
   // Probing Surface Inspection
   if (typeof inspectionWriteVariables == "function") {
     inspectionWriteVariables();
+  }
+  if (getProperty("useLiveConnection") && (typeof liveConnectionHeader == "function")) {
+    liveConnectionHeader();
   }
 }
 
@@ -2214,6 +2223,11 @@ function onSection() {
       onCommand(COMMAND_COOLANT_OFF);
     }
   }
+
+  // toolpath starting information for live connection
+  if (getProperty("useLiveConnection") && (typeof liveConnectionWriteData == "function")) {
+    liveConnectionWriteData("toolpathStart");
+  }
   // define smoothing mode
   initializeSmoothing();
 
@@ -3141,6 +3155,9 @@ function onCyclePoint(x, y, z) {
         // not required "R" + xyzFormat.format(-cycle.probeClearance),
         getProbingArguments(cycle, true)
       );
+      if (getProperty("useLiveConnection") && (typeof liveConnectionStoreResults == "function")) {
+        liveConnectionStoreResults();
+      }
       writeBlock(
         gFormat.format(65), "P" + 9812,
         "Y" + xyzFormat.format(cycle.width2),
@@ -3159,6 +3176,9 @@ function onCyclePoint(x, y, z) {
         "Q" + xyzFormat.format(cycle.probeOvertravel),
         getProbingArguments(cycle, true)
       );
+      if (getProperty("useLiveConnection") && (typeof liveConnectionStoreResults == "function")) {
+        liveConnectionStoreResults();
+      }
       writeBlock(
         gFormat.format(65), "P" + 9812,
         "Z" + xyzFormat.format(z - cycle.depth),
@@ -3178,6 +3198,9 @@ function onCyclePoint(x, y, z) {
         "R" + xyzFormat.format(-cycle.probeClearance),
         getProbingArguments(cycle, true)
       );
+      if (getProperty("useLiveConnection") && (typeof liveConnectionStoreResults == "function")) {
+        liveConnectionStoreResults();
+      }
       writeBlock(
         gFormat.format(65), "P" + 9812,
         "Z" + xyzFormat.format(z - cycle.depth),
@@ -3397,6 +3420,9 @@ function onCycleEnd() {
       writeBlock(gCycleModal.format(80), conditional(getProperty("useG95forTapping"), gFeedModeModal.format(94)));
       gMotionModal.reset();
     }
+  }
+  if (getProperty("useLiveConnection") && isProbeOperation() && typeof liveConnectionWriteData == "function") {
+    liveConnectionWriteData("macroEnd");
   }
 }
 
@@ -4006,6 +4032,13 @@ function onSectionEnd() {
     }
   }
 
+  if (getProperty("useLiveConnection") && (typeof liveConnectionWriteData == "function")) {
+    if (isInspectionOperation()) {
+      liveConnectionWriteData("inspectSurfaceAlarm");
+    }
+    liveConnectionWriteData("toolpathEnd");
+  }
+
   // reset for next section
   operationNeedsSafeStart = false;
   coolantPressure = getProperty("coolantPressure");
@@ -4105,6 +4138,9 @@ function writeRetract() {
 
 var isDPRNTopen = false;
 function inspectionCreateResultsFileHeader() {
+  if (getProperty("useLiveConnection") && controlType != "NGC") {
+    return; // do not DPRNT if Live connection is active on a classic control
+  }
   if (isDPRNTopen) {
     if (!getProperty("singleResultsFile")) {
       writeln("DPRNT[END]");
@@ -4114,7 +4150,7 @@ function inspectionCreateResultsFileHeader() {
   }
 
   if (isProbeOperation() && !printProbeResults()) {
-    return; // if print results is not desired by probe/ probeWCS
+    return; // if print results is not desired by probe/probeWCS
   }
 
   if (!isDPRNTopen) {
@@ -4153,6 +4189,9 @@ function getPointNumber() {
 }
 
 function inspectionWriteCADTransform() {
+  if (getProperty("useLiveConnection") && controlType != "NGC") {
+    return; // do not DPRNT if Live connection is active on a classic control
+  }
   var cadOrigin = currentSection.getModelOrigin();
   var cadWorkPlane = currentSection.getModelPlane().getTransposed();
   var cadEuler = cadWorkPlane.getEuler2(EULER_XYZ_S);
@@ -4172,6 +4211,18 @@ function inspectionWriteCADTransform() {
 function inspectionWriteWorkplaneTransform() {
   var orientation = (machineConfiguration.isMultiAxisConfiguration() && currentMachineABC != undefined) ? machineConfiguration.getOrientation(currentMachineABC) : currentSection.workPlane;
   var abc = orientation.getEuler2(EULER_XYZ_S);
+  if ((getProperty("useLiveConnection"))) {
+    liveConnectorInterface("WORKPLANE");
+    writeBlock(inspectionVariables.liveConnectionWPA + " = " + abcFormat.format(abc.x));
+    writeBlock(inspectionVariables.liveConnectionWPB + " = " + abcFormat.format(abc.y));
+    writeBlock(inspectionVariables.liveConnectionWPC + " = " + abcFormat.format(abc.z));
+    writeBlock("IF [" + inspectionVariables.workplaneStartAddress, "EQ -1] THEN",
+      inspectionVariables.workplaneStartAddress, "=", currentSection.getParameter("autodeskcam:operation-id")
+    );
+  }
+  if (getProperty("useLiveConnection") && controlType != "NGC") {
+    return; // do not DPRNT if Live connection is active on a classic control
+  }
   writeln("DPRNT[G330" +
     "*N" + getPointNumber() +
     "*A" + abcFormat.format(abc.x) +
@@ -4182,6 +4233,9 @@ function inspectionWriteWorkplaneTransform() {
 }
 
 function writeProbingToolpathInformation(cycleDepth) {
+  if (getProperty("useLiveConnection") && controlType != "NGC") {
+    return; // do not DPRNT if Live connection is active on a classic control
+  }
   writeln("DPRNT[TOOLPATHID*" + getParameter("autodeskcam:operation-id") + "]");
   if (isInspectionOperation()) {
     writeln("DPRNT[TOOLPATH*" + getParameter("operation-comment") + "]");
@@ -4191,14 +4245,17 @@ function writeProbingToolpathInformation(cycleDepth) {
 }
 
 function onClose() {
-  if (isDPRNTopen) {
-    writeln("DPRNT[END]");
-    writeBlock("PCLOS");
-    isDPRNTopen = false;
-    if (typeof inspectionProcessSectionEnd == "function") {
-      inspectionProcessSectionEnd();
+  if (!(getProperty("useLiveConnection") && controlType != "NGC")) {
+    if (isDPRNTopen) {
+      writeln("DPRNT[END]");
+      writeBlock("PCLOS");
+      isDPRNTopen = false;
     }
   }
+  if (!getProperty("useLiveConnection") && typeof inspectionProcessSectionEnd == "function") {
+    inspectionProcessSectionEnd();
+  }
+
   cancelG68Rotation();
   writeln("");
 
@@ -4233,6 +4290,11 @@ function onClose() {
     } else {
       writeRetract(X, Y);
     }
+  }
+
+  if (getProperty("useLiveConnection")) {
+    writeComment("Live Connection Footer"); // Live connection write footer
+    writeBlock(inspectionVariables.liveConnectionStatus, "= 2"); // If using live connection set results active to a 2 to signify program end
   }
 
   onImpliedCommand(COMMAND_END);
