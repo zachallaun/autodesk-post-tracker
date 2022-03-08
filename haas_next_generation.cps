@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43598 caa307e97aec7383716a8710c8d2607d913f9eb8 $
-  $Date: 2022-01-19 17:19:20 $
+  $Revision: 43690 0dc2e7919c8e774e06dd72cd59b9b30e354b071e $
+  $Date: 2022-03-08 14:47:02 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -2903,20 +2903,23 @@ function onCyclePoint(x, y, z) {
           case 17:
             xOutput.reset();
             position = xOutput.format(x);
-            depth = "Z" + xyzFormat.format(u);
+            depth = zOutput.format(u);
             break;
           case 18:
             zOutput.reset();
             position = zOutput.format(z);
-            depth = "Y" + xyzFormat.format(u);
+            depth = yOutput.format(u);
             break;
           case 19:
             yOutput.reset();
             position = yOutput.format(y);
-            depth = "X" + xyzFormat.format(u);
+            depth = xOutput.format(u);
             break;
           }
           writeBlock(conditional(u <= cycle.bottom, gRetractModal.format(98)), position, depth);
+        }
+        if (incrementalMode) {
+          setCyclePosition(cycle.retract);
         }
       }
       forceFeed();
