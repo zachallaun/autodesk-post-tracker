@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2021 by Autodesk, Inc.
+  Copyright (C) 2012-2022 by Autodesk, Inc.
   All rights reserved.
 
   Mazak post processor configuration.
 
-  $Revision: 43602 83ef305dbd685ac5903538365ed7de9a08636e84 $
-  $Date: 2022-01-21 00:04:52 $
+  $Revision: 43710 be9c82391145c95b055a2993a4d90669fd20eec1 $
+  $Date: 2022-03-16 20:05:39 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -15,7 +15,7 @@
 description = "Mazak";
 vendor = "Mazak";
 vendorUrl = "http://www.autodesk.com";
-legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
 certificationLevel = 2;
 minimumRevision = 45793;
 
@@ -1173,12 +1173,11 @@ function onSection() {
     }
   }
 
-  if (tool.type != TOOL_PROBE &&
-      (insertToolCall ||
-      forceSpindleSpeed ||
-      isFirstSection() ||
-      (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
-      (tool.clockwise != getPreviousSection().getTool().clockwise))) {
+  var spindleChanged = tool.type != TOOL_PROBE &&
+    (insertToolCall || forceSpindleSpeed || isFirstSection() ||
+    (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
+    (tool.clockwise != getPreviousSection().getTool().clockwise));
+  if (spindleChanged) {
     forceSpindleSpeed = false;
 
     if (spindleSpeed < 1) {
@@ -2247,6 +2246,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
 var currentCoolantMode = COOLANT_OFF;
 var coolantOff = undefined;
+var forceCoolant = false;
 
 function setCoolant(coolant) {
   var coolantCodes = getCoolantCodes(coolant);
@@ -2271,10 +2271,10 @@ function getCoolantCodes(coolant) {
   if (tool.type == TOOL_PROBE) { // avoid coolant output for probing
     coolant = COOLANT_OFF;
   }
-  if (coolant == currentCoolantMode) {
+  if (coolant == currentCoolantMode && (!forceCoolant || coolant == COOLANT_OFF)) {
     return undefined; // coolant is already active
   }
-  if ((coolant != COOLANT_OFF) && (currentCoolantMode != COOLANT_OFF) && (coolantOff != undefined)) {
+  if ((coolant != COOLANT_OFF) && (currentCoolantMode != COOLANT_OFF) && (coolantOff != undefined) && !forceCoolant) {
     if (Array.isArray(coolantOff)) {
       for (var i in coolantOff) {
         multipleCoolantBlocks.push(coolantOff[i]);
@@ -2283,6 +2283,7 @@ function getCoolantCodes(coolant) {
       multipleCoolantBlocks.push(coolantOff);
     }
   }
+  forceCoolant = false;
 
   var m;
   var coolantCodes = {};
@@ -2332,8 +2333,6 @@ function getCoolantCodes(coolant) {
 }
 
 var mapCommand = {
-  COMMAND_STOP                    : 0,
-  COMMAND_OPTIONAL_STOP           : 1,
   COMMAND_END                     : 2,
   COMMAND_SPINDLE_CLOCKWISE       : 3,
   COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
@@ -2347,6 +2346,12 @@ function onCommand(command) {
   case COMMAND_STOP:
     writeBlock(mFormat.format(0));
     forceSpindleSpeed = true;
+    forceCoolant = true;
+    return;
+  case COMMAND_OPTIONAL_STOP:
+    writeBlock(mFormat.format(1));
+    forceSpindleSpeed = true;
+    forceCoolant = true;
     return;
   case COMMAND_COOLANT_ON:
     setCoolant(COOLANT_FLOOD);
