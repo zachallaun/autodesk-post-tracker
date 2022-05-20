@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43727 1654000cf4b49699c85c4609a7371d9af234b038 $
-  $Date: 2022-03-29 15:59:01 $
+  $Revision: 43814 9402f830a000e97e8885d344dcc12dc65bf77998 $
+  $Date: 2022-05-20 14:56:40 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -65,11 +65,16 @@ properties = {
   },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
-    description: "Use sequence numbers for each block of outputted code.",
+    description: "'Yes' outputs sequence numbers on each block, 'Only on tool change' outputs sequence numbers on tool change blocks only, and 'No' disables the output of sequence numbers.",
     group      : "formats",
-    type       : "boolean",
-    value      : true,
-    scope      : "post"
+    type       : "enum",
+    values     : [
+      {title:"Yes", id:"true"},
+      {title:"No", id:"false"},
+      {title:"Only on tool change", id:"toolChange"}
+    ],
+    value: "true",
+    scope: "post"
   },
   sequenceNumberStart: {
     title      : "Start sequence number",
@@ -138,7 +143,7 @@ properties = {
   useG54x4: {
     title      : "Use G54.4",
     description: "Use G54.4 workpiece error compensation for angular probing.",
-    group      : "multiAxis",
+    group      : "probing",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -306,7 +311,7 @@ function writeBlock() {
   if (!formatWords(arguments)) {
     return;
   }
-  if (getProperty("showSequenceNumbers")) {
+  if (getProperty("showSequenceNumbers") == "true") {
     writeWords2("N" + sequenceNumber, arguments);
     sequenceNumber += getProperty("sequenceNumberIncrement");
   } else {
@@ -318,7 +323,7 @@ function writeBlock() {
   Writes the specified optional block.
 */
 function writeOptionalBlock() {
-  if (getProperty("showSequenceNumbers")) {
+  if (getProperty("showSequenceNumbers") == "true") {
     var words = formatWords(arguments);
     if (words) {
       writeWords("/", "N" + sequenceNumber, words);
@@ -331,6 +336,16 @@ function writeOptionalBlock() {
 
 function formatComment(text) {
   return "(" + filterText(String(text).toUpperCase(), permittedCommentChars) + ")";
+}
+
+/**
+  Writes the specified block - used for tool changes only.
+*/
+function writeToolBlock() {
+  var show = getProperty("showSequenceNumbers");
+  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
+  writeBlock(arguments);
+  setProperty("showSequenceNumbers", show);
 }
 
 /**
@@ -1148,7 +1163,7 @@ function onSection() {
     }
 
     disableLengthCompensation(false);
-    writeBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
+    writeToolBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
     if (tool.comment) {
       writeComment(tool.comment);
     }
