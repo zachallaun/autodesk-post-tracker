@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43727 1654000cf4b49699c85c4609a7371d9af234b038 $
-  $Date: 2022-03-29 15:59:01 $
+  $Revision: 43814 9402f830a000e97e8885d344dcc12dc65bf77998 $
+  $Date: 2022-05-20 14:56:40 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -111,7 +111,7 @@ properties = {
   useDPMFeeds: {
     title      : "Rotary moves use DPM feeds",
     description: "Enable to output DPM feeds, disable for Inverse Time feeds with rotary axes moves.",
-    group      : "preferences",
+    group      : "multiAxis",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -140,10 +140,10 @@ properties = {
     value      : true,
     scope      : "post"
   },
-  chipTransport: {
+  gotChipConveyor: {
     title      : "Use chip transport",
     description: "Enable to turn on chip transport at start of program.",
-    group      : "preferences",
+    group      : "configuration",
     type       : "boolean",
     value      : false,
     scope      : "post"
@@ -232,7 +232,7 @@ properties = {
     value      : false,
     scope      : "post"
   },
-  optionallyMeasureToolsAtStart: {
+  measureTools: {
     title      : "Optionally measure tools at start",
     description: "Measure each tool used at the beginning of the program when block delete is turned off.",
     group      : "preferences",
@@ -344,11 +344,16 @@ properties = {
   },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
-    description: "Use sequence numbers for each block of outputted code.",
+    description: "'Yes' outputs sequence numbers on each block, 'Only on tool change' outputs sequence numbers on tool change blocks only, and 'No' disables the output of sequence numbers.",
     group      : "formats",
-    type       : "boolean",
-    value      : true,
-    scope      : "post"
+    type       : "enum",
+    values     : [
+      {title:"Yes", id:"true"},
+      {title:"No", id:"false"},
+      {title:"Only on tool change", id:"toolChange"}
+    ],
+    value: "true",
+    scope: "post"
   },
   sequenceNumberStart: {
     title      : "Start sequence number",
@@ -364,14 +369,6 @@ properties = {
     group      : "formats",
     type       : "integer",
     value      : 5,
-    scope      : "post"
-  },
-  sequenceNumberToolOnly: {
-    title      : "Block number only on tool change",
-    description: "Specifies that block numbers should only be output at tool changes.",
-    group      : "formats",
-    type       : "boolean",
-    value      : false,
     scope      : "post"
   },
   showNotes: {
@@ -547,7 +544,6 @@ var currentWorkOffset;
 var coolantPressure;
 var optionalSection = false;
 var forceSpindleSpeed = false;
-var forceCoolant = false;
 var activeMovements; // do not use by default
 var currentFeedId;
 var maximumCircularRadiiDifference = toPreciseUnit(0.005, MM);
@@ -589,7 +585,7 @@ function writeBlock() {
   }
   var maximumSequenceNumber = ((getProperty("useSubroutines") == "allOperations") || (getProperty("useSubroutines") == "patterns") ||
     (getProperty("useSubroutines") == "cycles")) ? initialSubprogramNumber : 99999;
-  if (getProperty("showSequenceNumbers")) {
+  if (getProperty("showSequenceNumbers") == "true") {
     if (sequenceNumber >= maximumSequenceNumber) {
       sequenceNumber = getProperty("sequenceNumberStart");
     }
@@ -616,7 +612,7 @@ function writeBlock() {
 */
 function writeToolBlock() {
   var show = getProperty("showSequenceNumbers");
-  setProperty("showSequenceNumbers", show || getProperty("sequenceNumberToolOnly"));
+  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
   writeBlock(arguments);
   setProperty("showSequenceNumbers", show);
 }
@@ -1014,9 +1010,6 @@ function onOpen() {
   if (getProperty("useRadius")) {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
-  if (getProperty("sequenceNumberToolOnly")) {
-    setProperty("showSequenceNumbers", false);
-  }
   if (!getProperty("useMultiAxisFeatures")) {
     useDwoForPositioning = false;
   }
@@ -1024,7 +1017,7 @@ function onOpen() {
     if (getProperty("showSequenceNumbers")) {
       warning(localize("'Use sequence numbers' is switched off due to live connection."));
     }
-    setProperty("showSequenceNumbers", false);
+    setProperty("showSequenceNumbers", "false");
   }
 
   gRotationModal.format(69); // Default to G69 Rotation Off
@@ -1157,7 +1150,7 @@ function onOpen() {
   }
 
   // optionally cycle through all tools
-  if (getProperty("optionallyCycleToolsAtStart") || getProperty("optionallyMeasureToolsAtStart")) {
+  if (getProperty("optionallyCycleToolsAtStart") || getProperty("measureTools")) {
     var tools = getToolTable();
     optionalSection = true;
     if (tools.getNumberOfTools() > 0) {
@@ -1166,16 +1159,16 @@ function onOpen() {
       writeBlock(mFormat.format(0), formatComment(localize("Read note"))); // wait for operator
       writeComment(localize("With BLOCK DELETE turned off each tool will cycle through"));
       writeComment(localize("the spindle to verify that the correct tool is in the tool magazine"));
-      if (getProperty("optionallyMeasureToolsAtStart")) {
+      if (getProperty("measureTools")) {
         writeComment(localize("and to automatically measure it"));
       }
       writeComment(localize("Once the tools are verified turn BLOCK DELETE on to skip verification"));
-      if (getProperty("toolArmDrive") && getProperty("optionallyMeasureToolsAtStart")) {
+      if (getProperty("toolArmDrive") && getProperty("measureTools")) {
         writeBlock(mProbeArmModal.format(104), formatComment("Extend tool setting probe arm"));
       }
       for (var i = 0; i < tools.getNumberOfTools(); ++i) {
         var tool = tools.getTool(i);
-        if (getProperty("optionallyMeasureToolsAtStart") && (tool.type == TOOL_PROBE)) {
+        if (getProperty("measureTools") && (tool.type == TOOL_PROBE)) {
           continue;
         }
         var comment = "T" + toolFormat.format(tool.number) + " " +
@@ -1186,14 +1179,14 @@ function onOpen() {
         }
         comment += " - " + getToolTypeName(tool.type);
         writeComment(comment);
-        if (getProperty("optionallyMeasureToolsAtStart")) {
+        if (getProperty("measureTools")) {
           writeToolMeasureBlock(tool, true);
         } else {
           writeToolCycleBlock(tool);
         }
       }
     }
-    if (getProperty("toolArmDrive") && getProperty("optionallyMeasureToolsAtStart")) {
+    if (getProperty("toolArmDrive") && getProperty("measureTools")) {
       writeBlock(mProbeArmModal.format(105), formatComment("Retract tool setting probe arm"));
     }
     optionalSection = false;
@@ -1278,7 +1271,7 @@ function onOpen() {
 
   coolantPressure = getProperty("coolantPressure");
 
-  if (getProperty("chipTransport")) {
+  if (getProperty("gotChipConveyor")) {
     onCommand(COMMAND_START_CHIP_TRANSPORT);
   }
   // Probing Surface Inspection
@@ -2077,7 +2070,7 @@ function subprogramStart(_initialPosition, _abc, _incremental) {
     "N" + nFormat.format(currentSubprogram) +
     conditional(comment, formatComment(comment.substr(0, maximumLineLength - 2 - 6 - 1)))
   );
-  setProperty("showSequenceNumbers", false);
+  setProperty("showSequenceNumbers", "false");
   if (_incremental) {
     setIncrementalMode(_initialPosition, _abc);
   }
@@ -2505,7 +2498,7 @@ function onSection() {
     }
   } else {
     validate(lengthCompensationActive, "Length compensation is not active.");
-    if (getCurrentPosition().z < initialPosition.z) {
+    if (xyzFormat.getResultingValue(getCurrentPosition().z) < xyzFormat.getResultingValue(initialPosition.z)) {
       writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
       zIsOutput = true;
     }
@@ -3785,6 +3778,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
 var currentCoolantMode = COOLANT_OFF;
 var coolantOff = undefined;
+var forceCoolant = false;
 var isOptionalCoolant = false;
 
 function setCoolant(coolant) {
