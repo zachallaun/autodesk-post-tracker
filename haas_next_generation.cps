@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43814 9402f830a000e97e8885d344dcc12dc65bf77998 $
-  $Date: 2022-05-20 14:56:40 $
+  $Revision: 43860 57dd148d94bacc75c36a156a86c6fb95db24515a $
+  $Date: 2022-06-28 23:04:51 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -523,8 +523,6 @@ var firstFeedParameter = 100; // the first variable to use with parametric feed
 var forceResetWorkPlane = false; // enable to force reset of machine ABC on new orientation
 var minimumCyclePoints = 5; // minimum number of points in cycle operation to consider for subprogram
 var useDwoForPositioning = true; // specifies to use the DWO feature for XY positioning for multi-axis operations
-
-var WARNING_WORK_OFFSET = 0;
 
 var allowIndexingWCSProbing = false; // specifies that probe WCS with tool orientation is supported
 var probeVariables = {
@@ -1869,8 +1867,6 @@ function printProbeResults() {
   return currentSection.getParameter("printResults", 0) == 1;
 }
 
-var probeOutputWorkOffset = 1;
-
 function onPassThrough(text) {
   var commands = String(text).split(",");
   for (text in commands) {
@@ -1895,12 +1891,6 @@ function onManualNC(command, value) {
     break;
   default:
     expandManualNC(command, value);
-  }
-}
-
-function onParameter(name, value) {
-  if (name == "probe-output-work-offset") {
-    probeOutputWorkOffset = (value > 0) ? value : 1;
   }
 }
 
@@ -2649,6 +2639,7 @@ function setProbeAngleMethod() {
 /** Output rotation offset based on angular probing cycle. */
 function setProbeAngle() {
   if (probeVariables.outputRotationCodes) {
+    var probeOutputWorkOffset = currentSection.probeWorkOffset;
     validate(probeOutputWorkOffset <= 6, "Angular Probing only supports work offsets 1-6.");
     if (probeVariables.probeAngleMethod == "G68" && (Vector.diff(currentSection.getGlobalInitialToolAxis(), new Vector(0, 0, 1)).length > 1e-4)) {
       error(localize("You cannot use multi axis toolpaths while G68 Rotation is in effect."));
@@ -2947,6 +2938,10 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "reaming":
+      if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
+        expandCyclePoint(x, y, z);
+        break;
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(85),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -2974,6 +2969,10 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "boring":
+      if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
+        expandCyclePoint(x, y, z);
+        break;
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(89),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -3382,6 +3381,7 @@ function onCyclePoint(x, y, z) {
 
 function getProbingArguments(cycle, updateWCS) {
   var outputWCSCode = updateWCS && currentSection.strategy == "probe";
+  var probeOutputWorkOffset = currentSection.probeWorkOffset;
   if (outputWCSCode) {
     validate(
       probeOutputWorkOffset > 0 && (probeOutputWorkOffset > 6 ? probeOutputWorkOffset - 6 : probeOutputWorkOffset) <= 99,
