@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43860 57dd148d94bacc75c36a156a86c6fb95db24515a $
-  $Date: 2022-06-28 23:04:51 $
+  $Revision: 43917 137901004ca7b899eabfc93d41f02b60143d09bb $
+  $Date: 2022-08-17 18:54:31 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -1404,10 +1404,10 @@ function initializeSmoothing() {
     smoothing.isDifferent = smoothing.level != previousLevel;
     break;
   case "tolerance":
-    smoothing.isDifferent = smoothing.tolerance != previousTolerance;
+    smoothing.isDifferent = xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
     break;
   case "both":
-    smoothing.isDifferent = smoothing.level != previousLevel || smoothing.tolerance != previousTolerance;
+    smoothing.isDifferent = smoothing.level != previousLevel || xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
     break;
   default:
     error(localize("Unsupported smoothing criteria."));
