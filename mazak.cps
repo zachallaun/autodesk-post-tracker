@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43888 db98b97d59e631419324916a1773fdc9920ddccd $
-  $Date: 2022-07-14 15:33:51 $
+  $Revision: 43917 137901004ca7b899eabfc93d41f02b60143d09bb $
+  $Date: 2022-08-17 18:54:31 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -762,10 +762,10 @@ function initializeSmoothing() {
     smoothing.isDifferent = smoothing.level != previousLevel;
     break;
   case "tolerance":
-    smoothing.isDifferent = smoothing.tolerance != previousTolerance;
+    smoothing.isDifferent = xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
     break;
   case "both":
-    smoothing.isDifferent = smoothing.level != previousLevel || smoothing.tolerance != previousTolerance;
+    smoothing.isDifferent = smoothing.level != previousLevel || xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
     break;
   default:
     error(localize("Unsupported smoothing criteria."));
