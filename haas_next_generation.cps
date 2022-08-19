@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43917 137901004ca7b899eabfc93d41f02b60143d09bb $
-  $Date: 2022-08-17 18:54:31 $
+  $Revision: 43920 ea98e3ea3a5ac847a16df247cf2171870e7e9e01 $
+  $Date: 2022-08-19 13:38:47 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -2461,17 +2461,22 @@ function onSection() {
       }
     } else {
       skipBlock = _skipBlock;
-      writeBlock(
-        gAbsIncModal.format(90),
-        gMotionModal.format(currentSection.isMultiAxis() && operationSupportsTCP ? 0 : G),
-        conditional(!currentSection.isMultiAxis() || !operationSupportsTCP, gFormat.format(43)),
-        conditional(currentSection.isMultiAxis() && operationSupportsTCP, gFormat.format(234)),
-        xOutput.format(initialPosition.x),
-        yOutput.format(initialPosition.y),
-        zOutput.format(initialPosition.z),
-        F,
-        hFormat.format(lengthOffset)
-      );
+      if (currentSection.isMultiAxis() && operationSupportsTCP) {
+        writeBlock(gAbsIncModal.format(90), gMotionModal.format(0), gFormat.format(234), hFormat.format(lengthOffset));
+        skipBlock = _skipBlock;
+        writeBlock(gMotionModal.format(G), xOutput.format(initialPosition.x), yOutput.format(initialPosition.y), zOutput.format(initialPosition.z), F);
+      } else {
+        writeBlock(
+          gAbsIncModal.format(90),
+          gMotionModal.format(G),
+          gFormat.format(43),
+          xOutput.format(initialPosition.x),
+          yOutput.format(initialPosition.y),
+          zOutput.format(initialPosition.z),
+          F,
+          hFormat.format(lengthOffset)
+        );
+      }
     }
     zIsOutput = true;
     lengthCompensationActive = true;
@@ -2554,12 +2559,10 @@ function prepositionDWO(position, abc, _skipBlock) {
   skipBlock = _skipBlock;
   writeBlock(gFormat.format(255));
   skipBlock = _skipBlock;
-  writeBlock(
-    gMotionModal.format(0), // G0 motion mode is required for the G234 command
-    gFormat.format(234),
-    xOutput.format(position.x), yOutput.format(position.y), zOutput.format(position.z),
-    hFormat.format(tool.lengthOffset)
-  );
+  writeBlock(gMotionModal.format(0), gFormat.format(234), hFormat.format(tool.lengthOffset)); // G0 motion mode is required for the G234 command
+  skipBlock = _skipBlock;
+  forceXYZ();
+  writeBlock(gMotionModal.format(0), xOutput.format(position.x), yOutput.format(position.y), zOutput.format(position.z));
   lengthCompensationActive = true;
 }
 
