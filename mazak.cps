@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43917 137901004ca7b899eabfc93d41f02b60143d09bb $
-  $Date: 2022-08-17 18:54:31 $
+  $Revision: 43933 6bcef9d91cb332d1c0ed302f92d307677cf6b50a $
+  $Date: 2022-08-31 12:16:52 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -1105,7 +1105,8 @@ function onSection() {
   }
 
   if (insertToolCall) {
-    forceWorkPlane();
+
+    cancelWorkPlane();
 
     setCoolant(COOLANT_OFF);
 
