@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 43933 6bcef9d91cb332d1c0ed302f92d307677cf6b50a $
-  $Date: 2022-08-31 12:16:52 $
+  $Revision: 44011 42896744f513401feba3c6dabfba61504fe369e1 $
+  $Date: 2022-10-27 11:25:31 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -981,8 +981,9 @@ function setWorkPlane(abc) {
     if (cancelTiltFirst) {
       cancelWorkPlane();
     }
+    var machineABC = new Vector(0, 0, 0);
     if (machineConfiguration.isMultiAxisConfiguration()) {
-      var machineABC = abc.isNonZero() ? getWorkPlaneMachineABC(currentSection.workPlane, false, false) : abc;
+      machineABC = abc.isNonZero() ? getWorkPlaneMachineABC(currentSection.workPlane, false, false) : abc;
       if (useABCPrepositioning || abc.isZero()) {
         gMotionModal.reset();
         writeBlock(
@@ -997,7 +998,12 @@ function setWorkPlane(abc) {
     if (abc.isNonZero()) {
       gRotationModal.reset();
       writeBlock(gRotationModal.format(68.2), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0), "Z" + xyzFormat.format(0), "I" + abcFormat.format(abc.x), "J" + abcFormat.format(abc.y), "K" + abcFormat.format(abc.z)); // set frame
-      writeBlock(gFormat.format(53.1)); // turn machine
+      var dir = "";
+      if (machineConfiguration.isMultiAxisConfiguration()) {
+        var preference = abcFormat.format(machineABC.getCoordinate(machineConfiguration.getAxisU().getCoordinate()));
+        dir =  preference == 0 ? "" : (preference > 0 ? "P1" : "P2");
+      }
+      writeBlock(gFormat.format(53.1), dir); // turn machine
     } else {
       if (!cancelTiltFirst) {
         cancelWorkPlane();
