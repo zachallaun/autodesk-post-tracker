@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 43920 ea98e3ea3a5ac847a16df247cf2171870e7e9e01 $
-  $Date: 2022-08-19 13:38:47 $
+  $Revision: 44021 01c96fb7b052896b517cbbe46c5314505d9f4cfc $
+  $Date: 2022-11-04 13:47:45 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -28,7 +28,7 @@ vendor = "Haas Automation";
 vendorUrl = "https://www.haascnc.com";
 legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45793;
+minimumRevision = 45821;
 
 longDescription = "Generic post for the HAAS Next Generation control. The post includes support for multi-axis indexing and simultaneous machining. The post utilizes the dynamic work offset feature so you can place your work piece as desired without having to repost your NC programs." + EOL +
 "You can specify following pre-configured machines by using the property 'Machine model':" + EOL +
@@ -705,8 +705,7 @@ function prepareForToolCheck() {
   if (currentSection.isMultiAxis() && operationSupportsTCP) {
     disableLengthCompensation(false, "TCPC OFF");
   }
-  if ((currentSection.isMultiAxis() && getCurrentDirection().length != 0) ||
-    (currentMachineABC != undefined && currentMachineABC.length != 0)) {
+  if (getCurrentDirection().length != 0) {
     setWorkPlane(new Vector(0, 0, 0));
     forceWorkPlane();
   }
@@ -1607,7 +1606,7 @@ function defineWorkPlane(_section, _setWorkPlane) {
       abc = _section.isMultiAxis() ? _section.getInitialToolAxisABC() : getWorkPlaneMachineABC(_section.workPlane, _setWorkPlane);
     }
     if (_section.isMultiAxis() || isPolarModeActive()) {
-      cancelTransformation();
+      cancelTransformationTemp();
       if (_setWorkPlane) {
         if (activeG254) {
           writeBlock(gFormat.format(255)); // cancel DWO
@@ -1627,7 +1626,7 @@ function defineWorkPlane(_section, _setWorkPlane) {
       error(localize("Tool orientation is not supported."));
       return abc;
     }
-    setRotation(remaining);
+    setRotationTemp(remaining);
   }
   if (currentSection && (currentSection.getId() == _section.getId())) {
     operationSupportsTCP = (_section.isMultiAxis() || !useMultiAxisFeatures) && _section.getOptimizedTCPMode() == OPTIMIZE_NONE;
@@ -1684,7 +1683,7 @@ function setWorkPlane(abc) {
 
 function positionABC(abc, force) {
   if (typeof unwindABC == "function") {
-    unwindABC(abc, false);
+    unwindABC(abc);
   }
   if (force) {
     forceABC();
@@ -1703,161 +1702,127 @@ function positionABC(abc, force) {
     onCommand(COMMAND_UNLOCK_MULTI_AXIS);
     gMotionModal.reset();
     writeBlock(gMotionModal.format(0), a, b, c);
-    currentMachineABC = new Vector(abc);
     if (getCurrentSectionId() != -1) {
       setCurrentABC(abc); // required for machine simulation
     }
   }
 }
 
-var closestABC = true; // choose closest machine angles
-var currentMachineABC = new Vector(0, 0, 0);
-
-// resets the rotary axes to 0 if reset is specified when creating the axis
-function resetABC(previousABC) {
-  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
-  var abc = new Vector(previousABC);
-  for (var i in axis) {
-    if (axis[i].isEnabled() && (axis[i].getReset() & 1)) {
-      var coordinate = axis[i].getCoordinate();
-      if (abcFormat.getResultingValue(Math.abs(abc.getCoordinate(coordinate))) > 360) {
-        abc.setCoordinate(coordinate, 0);
-      }
-    }
-  }
-  return abc;
-}
-
-function getPreferenceWeight(_abc) {
-  var axis = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
-  var abc = new Array(_abc.x, _abc.y, _abc.z);
-  var preference = 0;
-  for (var i = 0; i < 3; ++i) {
-    if (axis[i].isEnabled()) {
-      preference += ((abcFormat.getResultingValue(abc[axis[i].getCoordinate()]) * axis[i].getPreference()) < 0) ? -1 : 1;
-    }
-  }
-  return preference;
-}
-
-function remapToABC(currentABC, previousABC, useReset) {
-  if (useReset) {
-    previousABC = resetABC(previousABC); // support 'reset' flag in axes definitions
-  }
-  var both = machineConfiguration.getABCByDirectionBoth(machineConfiguration.getDirection(currentABC));
-  var abc1 = machineConfiguration.remapToABC(both[0], previousABC);
-  abc1 = machineConfiguration.remapABC(abc1);
-  var abc2 = machineConfiguration.remapToABC(both[1], previousABC);
-  abc2 = machineConfiguration.remapABC(abc2);
-
-  // choose angles based on preference
-  var preference1 = getPreferenceWeight(abc1);
-  var preference2 = getPreferenceWeight(abc2);
-  if (preference1 > preference2) {
-    return abc1;
-  } else if (preference2 > preference1) {
-    return abc2;
-  }
-
-  // choose angles based on closest solution
-  if (Vector.diff(abc1, previousABC).length < Vector.diff(abc2, previousABC).length) {
-    return abc1;
-  } else {
-    return abc2;
-  }
-}
-
-function getWorkPlaneMachineABC(workPlane, _setWorkPlane) {
+function getWorkPlaneMachineABC(workPlane) {
   var W = workPlane; // map to global frame
 
-  var abc = machineConfiguration.getABC(W);
-  if (closestABC) {
-    if (currentMachineABC) {
-      abc = remapToABC(abc, currentMachineABC, true);
-    } else {
-      abc = machineConfiguration.getPreferredABC(abc);
-    }
-  } else {
-    abc = machineConfiguration.getPreferredABC(abc);
-  }
-
-  try {
-    abc = machineConfiguration.remapABC(abc);
-  } catch (e) {
-    error(
-      localize("Machine angles not supported") + ":"
-      + conditional(machineConfiguration.isMachineCoordinate(0), " A" + abcFormat.format(abc.x))
-      + conditional(machineConfiguration.isMachineCoordinate(1), " B" + abcFormat.format(abc.y))
-      + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
-    );
-  }
+  var currentABC = isFirstSection() ? new Vector(0, 0, 0) : getCurrentDirection();
+  var abc = machineConfiguration.getABCByPreference(W, currentABC, ABC, PREFER_PREFERENCE, ENABLE_ALL);
 
   var direction = machineConfiguration.getDirection(abc);
   if (!isSameDirection(direction, W.forward)) {
     error(localize("Orientation not supported."));
-  }
-
-  if (!machineConfiguration.isABCSupported(abc)) {
-    error(
-      localize("Work plane is not supported") + ":"
-      + conditional(machineConfiguration.isMachineCoordinate(0), " A" + abcFormat.format(abc.x))
-      + conditional(machineConfiguration.isMachineCoordinate(1), " B" + abcFormat.format(abc.y))
-      + conditional(machineConfiguration.isMachineCoordinate(2), " C" + abcFormat.format(abc.z))
-    );
+    return new Vector();
   }
 
   var tcp = false;
   if (tcp) {
-    setRotation(W); // TCP mode
+    setRotationTemp(W); // TCP mode
   } else {
     var O = machineConfiguration.getOrientation(abc);
     var R = machineConfiguration.getRemainingOrientation(abc, W);
-    setRotation(R);
+    setRotationTemp(R);
   }
 
   return abc;
 }
 
-function unwindABC(abc, force) {
-  var method = "G28"; // supported methods are "G28" and "G92"
-  if (method != "G92" && method != "G28") {
+// TAG setRotation & cancelTransformation will rotate the rotary angle directions, fixed in a future release of the post engine
+function setRotationTemp(W) {
+  var currentDirection = getCurrentDirection();
+  setRotation(W);
+  setCurrentDirection(currentDirection);
+}
+
+function cancelTransformationTemp() {
+  var currentDirection = getCurrentDirection();
+  cancelTransformation();
+  setCurrentDirection(currentDirection);
+}
+
+var UNWIND_ZERO = 1; // rotate axes to closest 0 (eg G28)
+var UNWIND_STAY = 2; // set rotary axes origin to current position (eg G92)
+var unwindSettings = {
+  method        : UNWIND_ZERO, // UNWIND_ZERO (move to closest 0 (G28)) or UNWIND_STAY (table does not move (G92))
+  codes         : [gFormat.format(28), gAbsIncModal.format(91)], // formatted code(s) that will (virtually) unwind axis (G90 G28), (G92), etc.
+  workOffsetCode: "", // prefix for workoffset number if it is required to be output
+  useAngle      : "true", // 'true' outputs angle with standard output variable, 'prefix' uses 'anglePrefix', 'false' does not output angle
+  anglePrefix   : [], // optional prefixes for output angles specified as ["", "", "C"], use blank string if axis does not unwind
+  resetG90      : true // set to 'true' if G90 needs to be output after the unwind block
+};
+
+function unwindABC(abc) {
+  if (typeof unwindSettings == "undefined") {
+    return;
+  }
+  if (unwindSettings.method != UNWIND_ZERO && unwindSettings.method != UNWIND_STAY) {
     error(localize("Unsupported unwindABC method."));
     return;
   }
+
   var axes = new Array(machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW());
+  var currentDirection = getCurrentDirection();
   for (var i in axes) {
-    if (axes[i].isEnabled()) {
-      if (axes[i].getReset() > 0 || force) {
-        var j = axes[i].getCoordinate();
-        var nearestABC = remapToABC(currentMachineABC, abc, false);
-        var distanceABC = abcFormat.getResultingValue(Math.abs(Vector.diff(currentMachineABC, abc).getCoordinate(j)));
-        var distanceOrigin = 0;
-        if (method == "G92") {
-          distanceOrigin = abcFormat.getResultingValue(Math.abs(Vector.diff(nearestABC, abc).getCoordinate(j)));
-        } else { // G28
-          distanceOrigin = abcFormat.getResultingValue(Math.abs(currentMachineABC.getCoordinate(j))) % 360; // calculate distance for unwinding axis
-          distanceOrigin = (distanceOrigin > 180) ? 360 - distanceOrigin : distanceOrigin; // take shortest route to 0
-          distanceOrigin += abcFormat.getResultingValue(Math.abs(abc.getCoordinate(j))); // add distance from 0 to new position
-        }
-        var revolutions = distanceABC / 360;
-        if (distanceABC > distanceOrigin && (revolutions > 1)) {
-          var angle = method == "G92" ? nearestABC.getCoordinate(j) : 0;
-          var words = method == "G92" ? [gFormat.format(92)] : [gFormat.format(28), gAbsIncModal.format(91)];
-          var outputs = [aOutput, bOutput, cOutput];
-          outputs[j].reset();
-          words.push(outputs[j].format(angle));
-          if (!retracted) {
-            if (typeof moveToSafeRetractPosition == "function") {
-              moveToSafeRetractPosition();
-            } else {
-              writeRetract(Z);
-            }
+    if (axes[i].isEnabled() && (unwindSettings.useAngle != "prefix" || unwindSettings.anglePrefix[axes[i].getCoordinate] != "")) {
+      var j = axes[i].getCoordinate();
+
+      // only use the active axis in calculations
+      var tempABC = new Vector(0, 0, 0);
+      tempABC.setCoordinate(j, abc.getCoordinate(j));
+      var tempCurrent = new Vector(0, 0, 0); // only use the active axis in calculations
+      tempCurrent.setCoordinate(j, currentDirection.getCoordinate(j));
+      var orientation = machineConfiguration.getOrientation(tempCurrent);
+
+      // get closest angle without respecting 'reset' flag
+      // and distance from previous angle to closest abc
+      var nearestABC = machineConfiguration.getABCByPreference(orientation, tempABC, ABC, PREFER_PREFERENCE, ENABLE_WCS);
+      var distanceABC = abcFormat.getResultingValue(Math.abs(Vector.diff(getCurrentDirection(), abc).getCoordinate(j)));
+
+      // calculate distance from calculated abc to closest abc
+      // include move to origin for G28 moves
+      var distanceOrigin = 0;
+      if (unwindSettings.method == UNWIND_STAY) {
+        distanceOrigin = abcFormat.getResultingValue(Math.abs(Vector.diff(nearestABC, abc).getCoordinate(j)));
+      } else { // closest angle
+        distanceOrigin = abcFormat.getResultingValue(Math.abs(getCurrentDirection().getCoordinate(j))) % 360; // calculate distance for unwinding axis
+        distanceOrigin = (distanceOrigin > 180) ? 360 - distanceOrigin : distanceOrigin; // take shortest route to 0
+        distanceOrigin += abcFormat.getResultingValue(Math.abs(abc.getCoordinate(j))); // add distance from 0 to new position
+      }
+
+      // determine if the axis needs to be rewound and rewind it if required
+      var revolutions = distanceABC / 360;
+      var angle = unwindSettings.method == UNWIND_STAY ? nearestABC.getCoordinate(j) : 0;
+      if (distanceABC > distanceOrigin && (unwindSettings.method == UNWIND_STAY || (revolutions > 1))) { // G28 method will move rotary, so make sure move is greater than 360 degrees
+        if (!retracted) {
+          if (typeof moveToSafeRetractPosition == "function") {
+            moveToSafeRetractPosition();
+          } else {
+            writeRetract(Z);
           }
-          onCommand(COMMAND_UNLOCK_MULTI_AXIS);
-          writeBlock(words);
-          writeBlock((gAbsIncModal.getCurrent() == 91) ? gAbsIncModal.format(90) : "");
-          currentMachineABC.setCoordinate(j, angle);
         }
+        onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+        var outputs = [aOutput, bOutput, cOutput];
+        outputs[j].reset();
+        writeBlock(
+          unwindSettings.codes,
+          unwindSettings.workOffsetCode ? unwindSettings.workOffsetCode + currentWorkOffset : "",
+          unwindSettings.useAngle == "true" ? outputs[j].format(angle) :
+            (unwindSettings.useAngle == "prefix" ? unwindSettings.anglePrefix[j] + abcFormat.format(angle) : "")
+        );
+        if (unwindSettings.resetG90) {
+          gAbsIncModal.reset();
+          writeBlock(gAbsIncModal.format(90));
+        }
+        outputs[j].reset();
+
+        // set the current rotary axis angle from the unwind block
+        currentDirection.setCoordinate(j, angle);
+        setCurrentDirection(currentDirection);
       }
     }
   }
@@ -2135,7 +2100,7 @@ function subprogramIsValid(_section, _patternId, _patternType) {
       }
     }
   }
-  setRotation(rotation);
+  setRotationTemp(rotation);
   setTranslation(translation);
   return (validSubprogram);
 }
@@ -3605,7 +3570,7 @@ function onRotateAxes(_x, _y, _z, _a, _b, _c) {
   yOutput.disable();
   zOutput.disable();
   forceG0 = true;
-  unwindABC(new Vector(_a, _b, _c), false);
+  unwindABC(new Vector(_a, _b, _c));
   invokeOnRapid5D(_x, _y, _z, _a, _b, _c);
   setCurrentABC(new Vector(_a, _b, _c));
   xOutput.enable();
@@ -3645,7 +3610,6 @@ var polarDirection = new Vector(1, 0, 0); // vector to maintain tool at while in
 function setPolarMode(section, mode) {
   if (!mode) { // turn off polar mode if required
     if (isPolarModeActive()) {
-      currentMachineABC = getCurrentDirection();
       deactivatePolarMode();
       setPolarFeedMode(false);
       usePolarMode = false;
@@ -4019,10 +3983,6 @@ function onSectionEnd() {
 
   if (currentSection.isMultiAxis() || isPolarModeActive()) {
     writeBlock(gFeedModeModal.format(94)); // inverse time feed off
-    if (currentSection.isOptimizedForMachine()) {
-      // the code below gets the machine angles from previous operation.  closestABC must also be set to true
-      currentMachineABC = currentSection.getFinalToolAxisABC();
-    }
     if (operationSupportsTCP) {
       disableLengthCompensation(false, "TCPC OFF");
     }
@@ -4212,7 +4172,7 @@ function inspectionWriteCADTransform() {
 }
 
 function inspectionWriteWorkplaneTransform() {
-  var orientation = (machineConfiguration.isMultiAxisConfiguration() && currentMachineABC != undefined) ? machineConfiguration.getOrientation(currentMachineABC) : currentSection.workPlane;
+  var orientation = (machineConfiguration.isMultiAxisConfiguration()) ? machineConfiguration.getOrientation(getCurrentDirection()) : currentSection.workPlane;
   var abc = orientation.getEuler2(EULER_XYZ_S);
   if ((getProperty("useLiveConnection"))) {
     liveConnectorInterface("WORKPLANE");
@@ -4271,7 +4231,7 @@ function onClose() {
 
   // retract
   writeRetract(Z);
-  if (!getProperty("homePositionCenter") || currentMachineABC.length != 0) {
+  if (!getProperty("homePositionCenter") || (machineConfiguration.isMultiAxisConfiguration() && getCurrentDirection().length != 0)) {
     writeRetract(X, Y);
   }
 
@@ -4281,7 +4241,7 @@ function onClose() {
   }
   // Unwind Rotary table at end
   if (machineConfiguration.isMultiAxisConfiguration()) {
-    unwindABC(new Vector(0, 0, 0), true); // force unwind at the end of the program
+    unwindABC(new Vector(0, 0, 0));
     positionABC(new Vector(0, 0, 0), true);
   }
   if (getProperty("homePositionCenter")) {
@@ -4338,7 +4298,3 @@ function onTerminate() {
   executeNoWait("excel", "\"" + FileSystem.replaceExtension(outputPath, "xlsx") + "\"", false, "");
 }
 */
-
-function setProperty(property, value) {
-  properties[property].current = value;
-}
