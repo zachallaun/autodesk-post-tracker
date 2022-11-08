@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 44021 01c96fb7b052896b517cbbe46c5314505d9f4cfc $
-  $Date: 2022-11-04 13:47:45 $
+  $Revision: 44024 4d58c4da5bb66b861f7f29d9c64e9ea9543296c6 $
+  $Date: 2022-11-07 22:27:59 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -539,7 +539,8 @@ var SUB_CYCLE = 2;
 // collected state
 var sequenceNumber;
 var currentWorkOffset;
-var coolantPressure;
+var coolantPressure = "";
+var currentCoolantPressure = "";
 var optionalSection = false;
 var forceSpindleSpeed = false;
 var activeMovements; // do not use by default
@@ -827,6 +828,9 @@ function activateMachine() {
     (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
   useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
     (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
+  if (receivedMachineConfiguration && machineConfiguration.getMaximumFeedrate() > 0) {
+    highFeedrate = machineConfiguration.getMaximumFeedrate();
+  }
 
   // don't need to modify any settings if 3-axis machine
   if (!machineConfiguration.isMultiAxisConfiguration()) {
@@ -1265,8 +1269,6 @@ function onOpen() {
     writeBlock(gUnitModal.format(21));
     break;
   }
-
-  coolantPressure = getProperty("coolantPressure");
 
   if (getProperty("gotChipConveyor")) {
     onCommand(COMMAND_START_CHIP_TRANSPORT);
@@ -2322,7 +2324,7 @@ function onSection() {
     }
     maximumSpindleRPM = machineConfiguration.getMaximumSpindleSpeed() > 0 ? machineConfiguration.getMaximumSpindleSpeed() : maximumSpindleRPM;
     if (spindleSpeed > maximumSpindleRPM) {
-      warning(subst(localize("Spindle speed '" + spindleSpeed + " RPM' exceeds maximum value of '%1 RPM."), maximumSpindleRPM));
+      warning(subst(localize("Spindle speed '" + spindleSpeed + " RPM' exceeds maximum value of '%1 RPM' in operation '%2'"), maximumSpindleRPM, String(getParameter("operation-comment"))));
     }
     skipBlock = !spindleChanged;
     writeBlock(
@@ -2377,6 +2379,13 @@ function onSection() {
   var abc = defineWorkPlane(currentSection, true);
 
   setProbeAngle(); // output probe angle rotations if required
+
+  if (coolantPressure == "") { // manual NC Action command takes precedence over property
+    coolantPressure = getProperty("coolantPressure");
+  }
+  if (!forceCoolant) {
+    forceCoolant = coolantPressure != currentCoolantPressure;
+  }
 
   // set coolant after we have positioned at Z
   setCoolant(tool.coolant);
@@ -3751,11 +3760,13 @@ var isOptionalCoolant = false;
 function setCoolant(coolant) {
   var coolantCodes = getCoolantCodes(coolant);
   forceSingleLine = false;
+  currentCoolantPressure = coolant == COOLANT_FLOOD ? currentCoolantPressure : "";
   if ((coolantCodes != undefined) && (coolant == COOLANT_FLOOD)) {
     if (coolantPressure != "") {
       forceSingleLine = true;
       coolantCodes.push(coolantPressure);
     }
+    currentCoolantPressure = coolantPressure;
   }
   if (Array.isArray(coolantCodes)) {
     if (singleLineCoolant || forceSingleLine) {
@@ -4004,7 +4015,7 @@ function onSectionEnd() {
 
   // reset for next section
   operationNeedsSafeStart = false;
-  coolantPressure = getProperty("coolantPressure");
+  coolantPressure = "";
   cycleReverse = false;
 
   setPolarMode(currentSection, false);
