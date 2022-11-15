@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 44011 42896744f513401feba3c6dabfba61504fe369e1 $
-  $Date: 2022-10-27 11:25:31 $
+  $Revision: 44031 7077ab033be9c3d66012b760307633955a3de91c $
+  $Date: 2022-11-15 14:56:32 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -59,9 +59,14 @@ properties = {
     title      : "Preload tool",
     description: "Preloads the next tool at a tool change (if any).",
     group      : "preferences",
-    type       : "boolean",
-    value      : true,
-    scope      : "post"
+    type       : "enum",
+    values     : [
+      {title:"Yes", id:"true"},
+      {title:"No", id:"false"},
+      {title:"On tool change block", id:"toolChange"}
+    ],
+    value: "true",
+    scope: "post"
   },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
@@ -1124,8 +1129,27 @@ function onSection() {
       warning(localize("Tool number exceeds maximum value."));
     }
 
+    var nextToolCode = "";
+    if (getProperty("preloadTool") != "false") {
+      var nextTool = getNextTool(tool.number);
+      if (nextTool) {
+        nextToolCode = "T" + toolFormat.format(nextTool.number);
+      } else {
+        // preload first tool
+        var firstToolNumber = getFirstTool().number;
+        if (tool.number != firstToolNumber) {
+          nextToolCode = "T" + toolFormat.format(firstToolNumber);
+        } else if (getProperty("preloadTool") == "toolChange") {
+          nextToolCode = "T" + toolFormat.format(0);
+        }
+      }
+    }
+
     disableLengthCompensation(false);
-    writeToolBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
+    writeToolBlock(
+      "T" + toolFormat.format(tool.number),
+      conditional(getProperty("preloadTool") == "toolChange", nextToolCode),
+      mFormat.format(6));
     if (tool.comment) {
       writeComment(tool.comment);
     }
@@ -1146,18 +1170,8 @@ function onSection() {
       }
     }
 
-    if (getProperty("preloadTool")) {
-      var nextTool = getNextTool(tool.number);
-      if (nextTool) {
-        writeBlock("T" + toolFormat.format(nextTool.number));
-      } else {
-        // preload first tool
-        var section = getSection(0);
-        var firstToolNumber = section.getTool().number;
-        if (tool.number != firstToolNumber) {
-          writeBlock("T" + toolFormat.format(firstToolNumber));
-        }
-      }
+    if (getProperty("preloadTool") == "true" && nextToolCode) {
+      writeBlock(nextToolCode);
     }
   }
 
