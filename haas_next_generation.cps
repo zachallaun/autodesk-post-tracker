@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2022 by Autodesk, Inc.
+  Copyright (C) 2012-2023 by Autodesk, Inc.
   All rights reserved.
 
   HAAS post processor configuration.
 
-  $Revision: 44024 4d58c4da5bb66b861f7f29d9c64e9ea9543296c6 $
-  $Date: 2022-11-07 22:27:59 $
+  $Revision: 44047 346dd981e18882b84b57316dc8c41181563c80cd $
+  $Date: 2023-02-03 19:38:40 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -26,9 +26,9 @@
 description = "HAAS - Next Generation Control";
 vendor = "Haas Automation";
 vendorUrl = "https://www.haascnc.com";
-legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2023 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45821;
+minimumRevision = 45909;
 
 longDescription = "Generic post for the HAAS Next Generation control. The post includes support for multi-axis indexing and simultaneous machining. The post utilizes the dynamic work offset feature so you can place your work piece as desired without having to repost your NC programs." + EOL +
 "You can specify following pre-configured machines by using the property 'Machine model':" + EOL +
@@ -50,6 +50,7 @@ maximumCircularSweep = toRad(355);
 allowHelicalMoves = true;
 allowedCircularPlanes = undefined; // allow any circular motion
 allowSpiralMoves = true;
+allowFeedPerRevolutionDrilling = true;
 highFeedrate = (unit == IN) ? 650 : 5000;
 
 // user-defined properties
@@ -468,6 +469,7 @@ var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true})
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 2 : 3), forceDecimal:true});
+var feedPerRevFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
 var inverseTimeFormat = createFormat({decimals:3, forceDecimal:true});
 var pitchFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
 var toolFormat = createFormat({decimals:0});
@@ -2728,6 +2730,10 @@ function onCyclePoint(x, y, z) {
       repositionToCycleClearance(cycle, x, y, z);
     }
 
+    if (currentSection.feedMode == FEED_PER_REVOLUTION) {
+      feedOutput = createVariable({prefix:"F"}, feedPerRevFormat); // apply feedPerRevFormat to feedOutput
+      writeBlock(gFeedModeModal.format(95));
+    }
     var F = cycle.feedrate;
     var P = !cycle.dwell ? 0 : clamp(1, cycle.dwell * 1000, 99999999); // in milliseconds
 
@@ -3393,8 +3399,12 @@ function onCycleEnd() {
       cycleSubprogramIsActive = false;
     }
     if (!cycleExpanded) {
-      writeBlock(gCycleModal.format(80), conditional(getProperty("useG95forTapping"), gFeedModeModal.format(94)));
+      writeBlock(gCycleModal.format(80));
       gMotionModal.reset();
+    }
+    writeBlock(gFeedModeModal.format(94));
+    if (currentSection.feedMode == FEED_PER_REVOLUTION) {
+      feedOutput = createVariable({prefix:"F"}, feedFormat); // re-apply feedFormat to feedOutput
     }
   }
   if (getProperty("useLiveConnection") && isProbeOperation() && typeof liveConnectionWriteData == "function") {
@@ -3437,6 +3447,7 @@ function onLinear(_x, _y, _z, feed) {
   var y = yOutput.format(_y);
   var z = zOutput.format(_z);
   var f = getFeed(feed);
+  var fMode = currentSection.feedMode == FEED_PER_REVOLUTION ? 95 : 94;
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
@@ -3444,7 +3455,7 @@ function onLinear(_x, _y, _z, feed) {
       if ((d > 200 && d < 1000) || d > 9999) {
         warning(localize("Diameter offset out of range."));
       }
-      writeBlock(gPlaneModal.format(17), gFeedModeModal.format(94));
+      writeBlock(gPlaneModal.format(17), gFeedModeModal.format(fMode));
       switch (radiusCompensation) {
       case RADIUS_COMPENSATION_LEFT:
         dOutput.reset();
@@ -3458,7 +3469,7 @@ function onLinear(_x, _y, _z, feed) {
         writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
       }
     } else {
-      writeBlock(gFeedModeModal.format(94), gMotionModal.format(1), x, y, z, f);
+      writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), x, y, z, f);
     }
   } else if (f) {
     if (getNextRecord().isMotion()) { // try not to output feed without motion
@@ -3992,11 +4003,10 @@ function onSectionEnd() {
   }
   forceAny();
 
-  if (currentSection.isMultiAxis() || isPolarModeActive()) {
-    writeBlock(gFeedModeModal.format(94)); // inverse time feed off
-    if (operationSupportsTCP) {
-      disableLengthCompensation(false, "TCPC OFF");
-    }
+  writeBlock(gFeedModeModal.format(94)); // feed per minute
+
+  if (currentSection.isMultiAxis() && operationSupportsTCP) {
+    disableLengthCompensation(false, "TCPC OFF");
   }
 
   if (isProbeOperation()) {
