@@ -1,11 +1,11 @@
 /**
-  Copyright (C) 2012-2022 by Autodesk, Inc.
+  Copyright (C) 2012-2023 by Autodesk, Inc.
   All rights reserved.
 
   Mazak post processor configuration.
 
-  $Revision: 44031 7077ab033be9c3d66012b760307633955a3de91c $
-  $Date: 2022-11-15 14:56:32 $
+  $Revision: 44053 79719c97704cafc4abbee261b32f87748443cb31 $
+  $Date: 2023-02-16 16:22:37 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -15,9 +15,9 @@
 description = "Mazak";
 vendor = "Mazak";
 vendorUrl = "http://www.autodesk.com";
-legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
+legal = "Copyright (C) 2012-2023 by Autodesk, Inc.";
 certificationLevel = 2;
-minimumRevision = 45821;
+minimumRevision = 45917;
 
 longDescription = "Generic milling post for Mazak.";
 
@@ -206,25 +206,6 @@ wcsDefinitions = {
   ]
 };
 
-var singleLineCoolant = false; // specifies to output multiple coolant codes in one line rather than in separate lines
-// samples:
-// {id: COOLANT_THROUGH_TOOL, on: 88, off: 89}
-// {id: COOLANT_THROUGH_TOOL, on: [8, 88], off: [9, 89]}
-// {id: COOLANT_THROUGH_TOOL, on: "M88 P3 (myComment)", off: "M89"}
-var coolants = [
-  {id:COOLANT_FLOOD, on:8},
-  {id:COOLANT_MIST, on:7},
-  {id:COOLANT_THROUGH_TOOL, on:51},
-  {id:COOLANT_AIR, on:52},
-  {id:COOLANT_AIR_THROUGH_TOOL, on:130},
-  {id:COOLANT_SUCTION},
-  {id:COOLANT_FLOOD_MIST},
-  {id:COOLANT_FLOOD_THROUGH_TOOL},
-  {id:COOLANT_OFF, off:9}
-];
-
-var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-:#";
-
 var gFormat = createFormat({prefix:"G", decimals:1});
 var mFormat = createFormat({prefix:"M", decimals:0});
 var hFormat = createFormat({prefix:"H", decimals:0});
@@ -243,10 +224,14 @@ var rpmFormat = createFormat({decimals:0});
 var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - range 0.001-99999.999
 var milliFormat = createFormat({decimals:0}); // milliseconds // range 1-99999999
 var taperFormat = createFormat({decimals:1, scale:DEG});
+var oFormat = createFormat({width:4, zeropad:true, decimals:0});
 
 var xOutput = createVariable({prefix:"X"}, xyzFormat);
 var yOutput = createVariable({prefix:"Y"}, xyzFormat);
 var zOutput = createVariable({onchange:function () {retracted = false;}, prefix:"Z"}, xyzFormat);
+var toolVectorOutputI = createVariable({prefix:"I", force:true}, ijkFormat);
+var toolVectorOutputJ = createVariable({prefix:"J", force:true}, ijkFormat);
+var toolVectorOutputK = createVariable({prefix:"K", force:true}, ijkFormat);
 var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
@@ -270,7 +255,7 @@ var gCycleModal = gMotionModal;
 var gRetractModal = createModal({}, gFormat); // modal group 10 // G98-99
 var gRotationModal = createModal({
   onchange: function () {
-    if (probeVariables.probeAngleMethod == "G68") {
+    if (settings.probing.probeAngleMethod == "G68") {
       probeVariables.outputRotationCodes = true;
     }
   }
@@ -284,87 +269,1106 @@ var mClampModal = createModalGroup(
   mFormat
 );
 
-// fixed settings
-var firstFeedParameter = 100;
-var useMultiAxisFeatures = true;
-var forceMultiAxisIndexing = false; // force multi-axis indexing for 3D programs
-var cancelTiltFirst = true; // cancel G68.2 with G69 prior to G54-G59 WCS block
-var useABCPrepositioning = false; // position ABC axes prior to G68.2 block
+var settings = {
+  coolant: {
+    // samples:
+    // {id: COOLANT_THROUGH_TOOL, on: 88, off: 89}
+    // {id: COOLANT_THROUGH_TOOL, on: [8, 88], off: [9, 89]}
+    // {id: COOLANT_THROUGH_TOOL, on: "M88 P3 (myComment)", off: "M89"}
+    coolants: [
+      {id:COOLANT_FLOOD, on:8},
+      {id:COOLANT_MIST, on:7},
+      {id:COOLANT_THROUGH_TOOL, on:51},
+      {id:COOLANT_AIR, on:52},
+      {id:COOLANT_AIR_THROUGH_TOOL, on:130},
+      {id:COOLANT_SUCTION},
+      {id:COOLANT_FLOOD_MIST},
+      {id:COOLANT_FLOOD_THROUGH_TOOL},
+      {id:COOLANT_OFF, off:9}
+    ],
+    singleLineCoolant: false, // specifies to output multiple coolant codes in one line rather than in separate lines
+  },
+  smoothing: {
+    roughing              : 1, // roughing level for smoothing in automatic mode
+    semi                  : 2, // semi-roughing level for smoothing in automatic mode
+    semifinishing         : 3, // semi-finishing level for smoothing in automatic mode
+    finishing             : 3, // finishing level for smoothing in automatic mode
+    thresholdRoughing     : toPreciseUnit(0.1, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
+    thresholdFinishing    : toPreciseUnit(0.01, MM), // operations with stock/tolerance below that threshold will use finishing level in automatic mode
+    thresholdSemiFinishing: toPreciseUnit(0.01, MM), // operations with stock/tolerance above finishing and below threshold roughing that threshold will use semi finishing level in automatic mode
 
-var allowIndexingWCSProbing = false; // specifies that probe WCS with tool orientation is supported
-var probeVariables = {
-  outputRotationCodes: false, // defines if it is required to output rotation codes
-  probeAngleMethod   : "OFF", // OFF, AXIS_ROT, G68, G54.4
-  compensationXY     : undefined
+    differenceCriteria: "level", // options: "level", "tolerance", "both". Specifies criteria when output smoothing codes
+    autoLevelCriteria : "stock", // use "stock" or "tolerance" to determine levels in automatic mode
+    cancelCompensation: true // tool length compensation must be canceled prior to changing the smoothing level
+  },
+  retract: {
+    cancelRotationOnRetracting: false, // specifies that rotations (G68) need to be canceled prior to retracting
+    methodXY                  : undefined, // special condition, overwrite retract behavior per axis
+    methodZ                   : undefined // special condition, overwrite retract behavior per axis
+  },
+  parametricFeeds: {
+    firstFeedParameter    : 100, // specifies the initial parameter number to be used for parametric feedrate output
+    feedAssignmentVariable: "#", // specifies the syntax to define a parameter
+    feedOutputVariable    : "F#" // specifies the syntax to output the feedrate as parameter
+  },
+  machineAngles: { // refer to https://cam.autodesk.com/posts/reference/classMachineConfiguration.html#a14bcc7550639c482492b4ad05b1580c8
+    controllingAxis: ABC,
+    type           : PREFER_PREFERENCE,
+    options        : ENABLE_ALL
+  },
+  workPlaneMethod: {
+    useTiltedWorkplane    : true, // specifies that tilted workplanes should be used (ie. G68.2, G254, PLANE SPATIAL, CYCLE800), can be overwritten by property
+    eulerConvention       : EULER_ZXZ_R, // specifies the euler convention (ie EULER_XYZ_R), set to undefined to use machine angles for TWP commands ('undefined' requires machine configuration)
+    eulerCalculationMethod: "standard", // ('standard' / 'machine') 'machine' adjusts euler angles to match the machines ABC orientation, machine configuration required
+    cancelTiltFirst       : true, // cancel tilted workplane prior to WCS (G54-G59) blocks
+    useABCPrepositioning  : false, // position ABC axes prior to tilted workplane blocks
+    forceMultiAxisIndexing: false, // force multi-axis indexing for 3D programs
+    optimizeType          : undefined // can be set to OPTIMIZE_NONE, OPTIMIZE_BOTH, OPTIMIZE_TABLES, OPTIMIZE_HEADS, OPTIMIZE_AXIS. 'undefined' uses legacy rotations
+  },
+  comments: {
+    permittedCommentChars: " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-:#",
+    prefix               : "(", // specifies the prefix for the comment
+    suffix               : ")", // specifies the suffix for the comment
+    upperCase            : true, // set to true to output all comments in upper case
+    maximumLineLength    : 80, // the maximum number of charaters allowed in a line
+  },
+  probing: {
+    probeAngleMethod       : "OFF", // supported options are: OFF, AXIS_ROT, G68, G54.4
+    allowIndexingWCSProbing: false // specifies that probe WCS with tool orientation is supported
+  },
+  maximumSequenceNumber: undefined, // the maximum sequence number (Nxxx), use 'undefined' for unlimited
+  allowToolVectorOutput: true // default: false, specifies if the control does support tool axis vector output for multi axis toolpath
 };
 
 // collected state
-var sequenceNumber;
-var currentWorkOffset;
-var forceSpindleSpeed = false;
-var activeMovements; // do not use by default
-var currentFeedId;
 var maximumCircularRadiiDifference = toPreciseUnit(0.005, MM);
-var retracted = false; // specifies that the tool has been retracted to the safe plane
 
-/**
-  Writes the specified block.
-*/
-function writeBlock() {
-  if (!formatWords(arguments)) {
-    return;
+function onOpen() {
+  // define and enable machine configuration
+  receivedMachineConfiguration = machineConfiguration.isReceived();
+  if (typeof defineMachine == "function") {
+    defineMachine(); // hardcoded machine configuration
   }
-  if (getProperty("showSequenceNumbers") == "true") {
-    writeWords2("N" + sequenceNumber, arguments);
-    sequenceNumber += getProperty("sequenceNumberIncrement");
-  } else {
-    writeWords(arguments);
-  }
-}
+  activateMachine(); // enable the machine optimizations and settings
 
-/**
-  Writes the specified optional block.
-*/
-function writeOptionalBlock() {
-  if (getProperty("showSequenceNumbers") == "true") {
-    var words = formatWords(arguments);
-    if (words) {
-      writeWords("/", "N" + sequenceNumber, words);
-      sequenceNumber += getProperty("sequenceNumberIncrement");
+  if (getProperty("useRadius")) {
+    maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
+  }
+  gRotationModal.format(69); // Default to G69 Rotation Off
+  mClampModal.format(44); // Default 4th axis modal code to be clamped
+  mClampModal.format(47); // Default 5th axis modal code to be clamped
+
+  if (!getProperty("separateWordsWithSpace")) {
+    setWordSeparator("");
+  }
+
+  validateInitialWCS();
+
+  if (programName) {
+    var programId;
+    try {
+      programId = getAsInt(programName);
+    } catch (e) {
+      error(localize("Program name must be a number."));
+      return;
+    }
+    if (!((programId >= 1) && (programId <= 99999999))) {
+      error(localize("Program number is out of range."));
+      return;
+    }
+    var o4Format = createFormat({width:4, zeropad:true, decimals:0});
+    var o8Format = createFormat({width:8, zeropad:true, decimals:0});
+    oFormat = (programId <= 9999) ? o4Format : o8Format;
+    if (programComment) {
+      writeln("O" + oFormat.format(programId) + " (" + programComment + ")");
+    } else {
+      writeln("O" + oFormat.format(programId));
     }
   } else {
-    writeWords2("/", arguments);
+    error(localize("Program name has not been specified."));
+    return;
+  }
+  if (typeof inspectionWriteVariables == "function") { //Probing Surface Inspection
+    inspectionWriteVariables();
+  }
+  writeProgramHeader();
+
+  // absolute coordinates and feed per min
+  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94), gPlaneModal.format(17), gFormat.format(49));
+
+  switch (unit) {
+  case IN:
+    writeBlock(gUnitModal.format(20));
+    break;
+  case MM:
+    writeBlock(gUnitModal.format(21));
+    break;
+  }
+
+  onCommand(COMMAND_START_CHIP_TRANSPORT);
+}
+
+function forceModals() {
+  if (arguments.length == 0) { // reset all modal variables listed below
+    if (typeof gMotionModal != "undefined") {
+      gMotionModal.reset();
+    }
+    if (typeof gPlaneModal != "undefined") {
+      gPlaneModal.reset();
+    }
+    if (typeof gAbsIncModal != "undefined") {
+      gAbsIncModal.reset();
+    }
+    if (typeof gFeedModeModal != "undefined") {
+      gFeedModeModal.reset();
+    }
+  } else {
+    for (var i in arguments) {
+      arguments[i].reset(); // only reset the modal variable passed to this function
+    }
   }
 }
 
-function formatComment(text) {
-  return "(" + filterText(String(text).toUpperCase(), permittedCommentChars) + ")";
+/** Disables length compensation if currently active or if forced. */
+var lengthCompensationActive = false;
+function disableLengthCompensation(force) {
+  if (lengthCompensationActive || force) {
+    validate(retracted, "Cannot cancel length compensation if the machine is not fully retracted.");
+    writeBlock(gFormat.format(49));
+    lengthCompensationActive = false;
+  }
 }
 
-/**
-  Writes the specified block - used for tool changes only.
-*/
-function writeToolBlock() {
-  var show = getProperty("showSequenceNumbers");
-  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
-  writeBlock(arguments);
-  setProperty("showSequenceNumbers", show);
+function setSmoothing(mode) {
+  smoothingSettings = settings.smoothing;
+  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent) && !smoothing.force) {
+    return; // return if smoothing is already active or is not different
+  }
+  if (typeof lengthCompensationActive != "undefined" && smoothingSettings.cancelCompensation) {
+    validate(!lengthCompensationActive, "Length compensation is active while trying to update smoothing.");
+  }
+
+  if (mode) { // enable smoothing
+    writeBlock(gFormat.format(5), "P2");
+  } else { // disable smoothing
+    writeBlock(gFormat.format(5), "P0");
+  }
+  smoothing.isActive = mode;
+  smoothing.force = false;
+  smoothing.isDifferent = false;
 }
 
-/**
-  Output a comment.
-*/
-function writeComment(text) {
-  writeln(formatComment(text));
+var currentWorkPlaneABC = undefined;
+
+function forceWorkPlane() {
+  currentWorkPlaneABC = undefined;
 }
 
-// Start of machine configuration logic
-var compensateToolLength = false; // add the tool length to the pivot distance for nonTCP rotary heads
+function cancelWorkPlane(force) {
+  if (force) {
+    gRotationModal.reset();
+  }
+  writeBlock(gRotationModal.format(69)); // cancel frame
+  forceWorkPlane();
+}
 
+function setWorkPlane(abc) {
+  if (!settings.workPlaneMethod.forceMultiAxisIndexing && is3D() && !machineConfiguration.isMultiAxisConfiguration()) {
+    return; // ignore
+  }
+
+  if (!((currentWorkPlaneABC == undefined) ||
+        abcFormat.areDifferent(abc.x, currentWorkPlaneABC.x) ||
+        abcFormat.areDifferent(abc.y, currentWorkPlaneABC.y) ||
+        abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
+    return; // no change
+  }
+
+  onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+  if (!retracted) {
+    writeRetract(Z);
+  }
+
+  if (settings.workPlaneMethod.useTiltedWorkplane) {
+    if (settings.workPlaneMethod.cancelTiltFirst) {
+      cancelWorkPlane();
+    }
+    if (machineConfiguration.isMultiAxisConfiguration()) {
+      var machineABC = abc.isNonZero() ? getWorkPlaneMachineABC(currentSection, false) : abc;
+      if (settings.workPlaneMethod.useABCPrepositioning || machineABC.isZero()) {
+        positionABC(machineABC, false);
+      } else {
+        setCurrentABC(machineABC);
+      }
+    }
+    if (abc.isNonZero()) {
+      gRotationModal.reset();
+      writeBlock(gRotationModal.format(68.2), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0), "Z" + xyzFormat.format(0), "I" + abcFormat.format(abc.x), "J" + abcFormat.format(abc.y), "K" + abcFormat.format(abc.z)); // set frame
+      var dir = "";
+      if (machineConfiguration.isMultiAxisConfiguration()) {
+        var preference = abcFormat.format(machineABC.getCoordinate(machineConfiguration.getAxisU().getCoordinate()));
+        dir =  preference == 0 ? "" : (preference > 0 ? "P1" : "P2");
+      }
+      writeBlock(gFormat.format(53.1), dir); // turn machine
+    } else {
+      if (!settings.workPlaneMethod.cancelTiltFirst) {
+        cancelWorkPlane();
+      }
+      //G53.1 is not to be called when A0 C0
+      //writeBlock(gFormat.format(53.1)); // turn machine
+    }
+  } else {
+    positionABC(abc, true);
+  }
+  if (!currentSection.isMultiAxis() && !isPolarModeActive()) {
+    onCommand(COMMAND_LOCK_MULTI_AXIS);
+  }
+
+  currentWorkPlaneABC = abc;
+}
+
+function onSection() {
+  var forceToolAndRetract = optionalSection && !currentSection.isOptional();
+  optionalSection = currentSection.isOptional();
+  var insertToolCall = isToolChangeNeeded("number") || forceToolAndRetract;
+  var newWorkOffset = isNewWorkOffset();
+  var newWorkPlane = isNewWorkPlane();
+  initializeSmoothing(); // initialize smoothing mode
+
+  if (insertToolCall || newWorkOffset || newWorkPlane || smoothing.cancel) {
+    // stop spindle before retract during tool change
+    if (insertToolCall && !isFirstSection()) {
+      onCommand(COMMAND_STOP_SPINDLE);
+    }
+
+    writeRetract(Z);
+    if ((insertToolCall && !isFirstSection()) || smoothing.cancel) {
+      disableLengthCompensation();
+      setSmoothing(false);
+    }
+  }
+
+  writeln("");
+  writeComment(getParameter("operation-comment", ""));
+
+  if (getProperty("showNotes")) {
+    writeSectionNotes();
+  }
+
+  if (insertToolCall) {
+    cancelWorkPlane();
+    forceModals();
+    setCoolant(COOLANT_OFF);
+
+    if (!isFirstSection() && getProperty("optionalStop")) {
+      onCommand(COMMAND_OPTIONAL_STOP);
+    }
+
+    if (tool.number > 100000000) {
+      warning(localize("Tool number exceeds maximum value."));
+    }
+    if (tool.lengthOffset > 512) {
+      error(localize("Length offset out of range."));
+      return;
+    }
+    var nextToolCode = "";
+    if (getProperty("preloadTool") != "false") {
+      var nextTool = getNextTool(tool.number);
+      if (nextTool) {
+        nextToolCode = "T" + toolFormat.format(nextTool.number);
+      } else {
+        // preload first tool
+        var firstToolNumber = getFirstTool().number;
+        if (tool.number != firstToolNumber) {
+          nextToolCode = "T" + toolFormat.format(firstToolNumber);
+        } else if (getProperty("preloadTool") == "toolChange") {
+          nextToolCode = "T" + toolFormat.format(0);
+        }
+      }
+    }
+
+    disableLengthCompensation(false);
+    writeToolBlock(
+      "T" + toolFormat.format(tool.number),
+      conditional(getProperty("preloadTool") == "toolChange", nextToolCode),
+      mFormat.format(6));
+    if (tool.comment) {
+      writeComment(tool.comment);
+    }
+    var showToolZMin = false;
+    if (showToolZMin) {
+      if (is3D()) {
+        var numberOfSections = getNumberOfSections();
+        var zRange = currentSection.getGlobalZRange();
+        var number = tool.number;
+        for (var i = currentSection.getId() + 1; i < numberOfSections; ++i) {
+          var section = getSection(i);
+          if (section.getTool().number != number) {
+            break;
+          }
+          zRange.expandToRange(section.getGlobalZRange());
+        }
+        writeComment(localize("ZMIN") + "=" + zRange.getMinimum());
+      }
+    }
+
+    if (getProperty("preloadTool") == "true" && nextToolCode) {
+      writeBlock(nextToolCode);
+    }
+  }
+  // Output modal commands here
+  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94), gPlaneModal.format(17));
+
+  var spindleChanged = tool.type != TOOL_PROBE &&
+    (insertToolCall || forceSpindleSpeed || isFirstSection() ||
+    (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
+    (tool.clockwise != getPreviousSection().getTool().clockwise));
+  if (spindleChanged) {
+    forceSpindleSpeed = false;
+
+    if (spindleSpeed < 1) {
+      error(localize("Spindle speed out of range."));
+      return;
+    }
+    if (spindleSpeed > 99999) {
+      warning(localize("Spindle speed exceeds maximum value."));
+    }
+    writeBlock(
+      sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4)
+    );
+
+    if (settings.workPlaneMethod.forceMultiAxisIndexing || !is3D() || machineConfiguration.isMultiAxisConfiguration()) {
+      // writeBlock(mFormat.format(xxx)); // shortest path traverse
+    }
+  }
+
+  // wcs
+  if (insertToolCall) { // force work offset when changing tool
+    currentWorkOffset = undefined;
+  }
+
+  if (currentSection.workOffset != currentWorkOffset) {
+    if (settings.workPlaneMethod.cancelTiltFirst) {
+      cancelWorkPlane();
+    }
+    forceWorkPlane();
+    writeBlock(currentSection.wcs);
+    currentWorkOffset = currentSection.workOffset;
+  }
+
+  forceXYZ();
+
+  var abc = defineWorkPlane(currentSection, true);
+
+  setProbeAngle(); // output probe angle rotations if required
+
+  // set coolant after we have positioned at Z
+  setCoolant(tool.coolant);
+
+  setSmoothing(smoothing.isAllowed);
+
+  forceAny();
+  gMotionModal.reset();
+
+  // prepositioning
+  var initialPosition = getFramePosition(currentSection.getInitialPosition());
+  var safeStartIsRequired = (insertToolCall || retracted);
+  if (insertToolCall || !lengthCompensationActive || operationNeedsSafeStart || retracted || (!isFirstSection() && getPreviousSection().isMultiAxis())) {
+    writeStartBlocks(safeStartIsRequired, function() {
+      disableLengthCompensation(false); // cancel tool length compensation prior to enabling it, required when switching G43/G43.4 modes
+      writeInitialPositioning(initialPosition, abc, true); // full initial positioning
+    });
+  }
+  if (!safeStartIsRequired) {
+    writeInitialPositioning(initialPosition, abc, false); // simple XYZ positioning
+  }
+  validate(lengthCompensationActive, "Tool length compensation is not active."); // make sure that lenght compensation is enabled
+
+  // write parametric feedrate table
+  if (typeof initializeParametricFeeds == "function") {
+    initializeParametricFeeds(insertToolCall);
+  }
+
+  if (isProbeOperation()) {
+    validate(settings.probing.probeAngleMethod != "G68", "You cannot probe while G68 Rotation is in effect.");
+    validate(settings.probing.probeAngleMethod != "G54.4", "You cannot probe while workpiece setting error compensation G54.4 is enabled.");
+    writeBlock(gFormat.format(65), "P" + 9832); // spin the probe on
+    inspectionCreateResultsFileHeader();
+  } else {
+    // surface Inspection
+    if (isInspectionOperation() && (typeof inspectionProcessSectionStart == "function")) {
+      inspectionProcessSectionStart();
+    }
+  }
+  retracted = false;
+}
+
+function onDwell(seconds) {
+  if (seconds > 99999.999) {
+    warning(localize("Dwelling time is out of range."));
+  }
+  seconds = clamp(0.001, seconds, 99999.999);
+  writeBlock(gFeedModeModal.format(94), gFormat.format(4), "P" + milliFormat.format(seconds * 1000));
+}
+
+function onSpindleSpeed(spindleSpeed) {
+  writeBlock(sOutput.format(spindleSpeed));
+}
+
+function onCycle() {
+  writeBlock(gPlaneModal.format(17));
+}
+
+function getCommonCycle(x, y, z, r) {
+  forceXYZ(); // force xyz on first drill hole of any cycle
+  return [xOutput.format(x), yOutput.format(y),
+    zOutput.format(z),
+    "R" + xyzFormat.format(r)];
+}
+
+/** Output rotation offset based on angular probing cycle. */
+function setProbeAngle() {
+  if (probeVariables.outputRotationCodes) {
+    var probeOutputWorkOffset = currentSection.probeWorkOffset;
+    validate(probeOutputWorkOffset <= 6, "Angular Probing only supports work offsets 1-6.");
+    if (settings.probing.probeAngleMethod == "G68" && (Vector.diff(currentSection.getGlobalInitialToolAxis(), new Vector(0, 0, 1)).length > 1e-4)) {
+      error(localize("You cannot use multi axis toolpaths while G68 Rotation is in effect."));
+    }
+    var validateWorkOffset = false;
+    switch (settings.probing.probeAngleMethod) {
+    case "G54.4":
+      var param = 5801 + (probeOutputWorkOffset * 10);
+      writeBlock("#" + param + "=#135");
+      writeBlock("#" + (param + 1) + "=#136");
+      writeBlock("#" + (param + 5) + "=#144");
+      writeBlock(gFormat.format(54.4), "P" + probeOutputWorkOffset);
+      break;
+    case "G68":
+      gRotationModal.reset();
+      gAbsIncModal.reset();
+      var n = xyzFormat.format(0);
+      writeBlock(
+        gRotationModal.format(68), gAbsIncModal.format(90),
+        probeVariables.compensationXY, "Z" + n, "I" + n, "J" + n, "K" + xyzFormat.format(1), "R[#144]"
+      );
+      validateWorkOffset = true;
+      break;
+    case "AXIS_ROT":
+      var param = 5200 + probeOutputWorkOffset * 20 + 5;
+      writeBlock("#" + param + " = " + "[#" + param + " + #144]");
+      forceWorkPlane(); // force workplane to rotate ABC in order to apply rotation offsets
+      currentWorkOffset = undefined; // force WCS output to make use of updated parameters
+      validateWorkOffset = true;
+      break;
+    default:
+      error(localize("Angular Probing is not supported for this machine configuration."));
+      return;
+    }
+    if (validateWorkOffset) {
+      for (var i = currentSection.getId(); i < getNumberOfSections(); ++i) {
+        if (getSection(i).workOffset != currentSection.workOffset) {
+          error(localize("WCS offset cannot change while using angle rotation compensation."));
+          return;
+        }
+      }
+    }
+    probeVariables.outputRotationCodes = false;
+  }
+}
+
+function onCyclePoint(x, y, z) {
+  if (cycleType == "inspect") {
+    if (typeof inspectionCycleInspect == "function") {
+      inspectionCycleInspect(cycle, x, y, z);
+      return;
+    } else {
+      cycleNotSupported();
+    }
+  } else if (isProbeOperation()) {
+    writeProbeCycle(cycle, x, y, z);
+  } else {
+    if (!isSameDirection(getRotation().forward, new Vector(0, 0, 1))) {
+      expandCyclePoint(x, y, z);
+      return;
+    }
+
+    gRetractModal.reset();
+    if (isFirstCyclePoint()) {
+      repositionToCycleClearance(cycle, x, y, z);
+
+      // return to initial Z which is clearance plane and set absolute mode
+
+      var F = cycle.feedrate;
+      var P = !cycle.dwell ? 0 : clamp(1, cycle.dwell * 1000, 99999999); // in milliseconds
+
+      switch (cycleType) {
+      case "drilling": // use G82
+      case "counter-boring":
+        var d0 = cycle.retract - cycle.stock;
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(82),
+          getCommonCycle(x, y, z, cycle.retract),
+          conditional(P > 0, "P" + milliFormat.format(P)),
+          feedOutput.format(F),
+          conditional(d0 > 0, "D" + milliFormat.format(d0))
+        );
+        break;
+      case "chip-breaking":
+        if (cycle.accumulatedDepth < cycle.depth) {
+          expandCyclePoint(x, y, z);
+        } else {
+          var tz = cycle.incrementalDepth;
+          // var d0 = (cycle.chipBreakDistance != undefined) ? cycle.chipBreakDistance : machineParameters.chipBreakingDistance;
+          var k0 = cycle.retract - cycle.stock;
+          // d0 not supported
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(73),
+            getCommonCycle(x, y, z, cycle.retract),
+            "Q" + xyzFormat.format(tz),
+            conditional(P > 0, "P" + milliFormat.format(P)),
+            feedOutput.format(F),
+            // conditional(d0 > 0, "D" + xyzFormat.format(d0)), // use parameter F12
+            conditional(k0 > 0, "K" + xyzFormat.format(k0))
+          );
+        }
+        break;
+      case "deep-drilling":
+        var tz = cycle.incrementalDepth;
+        var k0 = cycle.retract - cycle.stock;
+        // d0 not supported
+        if (cycle.dwell > 0) { // not supported by cycle
+          expandCyclePoint(x, y, z);
+        } else {
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(83),
+            getCommonCycle(x, y, z, cycle.retract),
+            "Q" + xyzFormat.format(tz),
+            feedOutput.format(F),
+            conditional(k0 > 0, "K" + xyzFormat.format(k0))
+          );
+        }
+        break;
+      case "tapping":
+        if (getProperty("usePitchForTapping")) {
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
+            getCommonCycle(x, y, z, cycle.retract),
+            pitchOutput.format(tool.threadPitch)
+          );
+          forceFeed();
+        } else {
+          F = tool.getTappingFeedrate();
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
+            getCommonCycle(x, y, z, cycle.retract),
+            feedOutput.format(F)
+          );
+        }
+        break;
+      case "left-tapping":
+        if (getProperty("usePitchForTapping")) {
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
+            getCommonCycle(x, y, z, cycle.retract),
+            pitchOutput.format(tool.threadPitch)
+          );
+          forceFeed();
+        } else {
+          F = tool.getTappingFeedrate();
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
+            getCommonCycle(x, y, z, cycle.retract),
+            feedOutput.format(F)
+          );
+        }
+        break;
+      case "right-tapping":
+        if (getProperty("usePitchForTapping")) {
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
+            getCommonCycle(x, y, z, cycle.retract),
+            pitchOutput.format(tool.threadPitch)
+          );
+          forceFeed();
+        } else {
+          F = tool.getTappingFeedrate();
+          writeBlock(
+            gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
+            getCommonCycle(x, y, z, cycle.retract),
+            feedOutput.format(F)
+          );
+        }
+        break;
+      case "fine-boring":
+      // TAG: add support for counterclockwise direction
+        var d0 = cycle.retract - cycle.stock;
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(76),
+          getCommonCycle(x, y, z, cycle.retract),
+          conditional(P > 0, "P" + milliFormat.format(P)),
+          "Q" + xyzFormat.format(cycle.shift),
+          feedOutput.format(F),
+          conditional(d0 > 0, "D" + xyzFormat.format(d0))
+        );
+        break;
+      case "back-boring":
+        var dx = (gPlaneModal.getCurrent() == 19) ? cycle.backBoreDistance : 0;
+        var dy = (gPlaneModal.getCurrent() == 18) ? cycle.backBoreDistance : 0;
+        var dz = (gPlaneModal.getCurrent() == 17) ? cycle.backBoreDistance : 0;
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(87),
+          getCommonCycle(x - dx, y - dy, z - dz, cycle.bottom),
+          feedOutput.format(F),
+          conditional(P > 0, "P" + milliFormat.format(P)),
+          "Q" + xyzFormat.format(cycle.shift)
+        );
+        break;
+      case "reaming":
+        var d0 = cycle.retract - cycle.stock;
+        var f1 = cycle.retractFeedrate;
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(85),
+          getCommonCycle(x, y, z, cycle.retract),
+          feedOutput.format(F),
+          conditional(P > 0, "P" + milliFormat.format(P)),
+          conditional(f1 != F, "E" + feedFormat.format(f1)),
+          conditional(d0 > 0, "D" + xyzFormat.format(d0))
+        );
+        break;
+      case "stop-boring":
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(86),
+          getCommonCycle(x, y, z, cycle.retract),
+          feedOutput.format(F),
+          conditional(P > 0, "P" + milliFormat.format(P))
+        );
+        break;
+      case "manual-boring":
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(88),
+          getCommonCycle(x, y, z, cycle.retract),
+          feedOutput.format(F),
+          conditional(P > 0, "P" + milliFormat.format(P))
+        );
+        break;
+      case "boring":
+        writeBlock(
+          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(89),
+          getCommonCycle(x, y, z, cycle.retract),
+          feedOutput.format(F),
+          conditional(P > 0, "P" + milliFormat.format(P))
+        );
+        break;
+      default:
+        expandCyclePoint(x, y, z);
+      }
+    } else {
+      if (cycleExpanded) {
+        expandCyclePoint(x, y, z);
+      } else {
+        var _x = xOutput.format(x);
+        var _y = yOutput.format(y);
+        var _z = zOutput.format(z);
+        if (!_x && !_y && !_z) {
+          switch (gPlaneModal.getCurrent()) {
+          case 17: // XY
+            xOutput.reset(); // at least one axis is required
+            _x = xOutput.format(x);
+            break;
+          case 18: // ZX
+            zOutput.reset(); // at least one axis is required
+            _z = zOutput.format(z);
+            break;
+          case 19: // YZ
+            yOutput.reset(); // at least one axis is required
+            _y = yOutput.format(y);
+            break;
+          }
+        }
+        writeBlock(_x, _y, _z);
+      }
+    }
+  }
+}
+
+function onCycleEnd() {
+  if (isProbeOperation()) {
+    zOutput.reset();
+    gMotionModal.reset();
+    writeBlock(gFormat.format(65), "P" + 9810, zOutput.format(cycle.retract)); // protected retract move
+  } else {
+    if (!cycleExpanded) {
+      writeBlock(gCycleModal.format(80));
+      gMotionModal.reset();
+    }
+  }
+}
+
+function onRapid(_x, _y, _z) {
+  var x = xOutput.format(_x);
+  var y = yOutput.format(_y);
+  var z = zOutput.format(_z);
+  if (x || y || z) {
+    if (pendingRadiusCompensation >= 0) {
+      error(localize("Radius compensation mode cannot be changed at rapid traversal."));
+      return;
+    }
+    writeBlock(gMotionModal.format(0), x, y, z);
+    forceFeed();
+  }
+}
+
+function onLinear(_x, _y, _z, feed) {
+  var x = xOutput.format(_x);
+  var y = yOutput.format(_y);
+  var z = zOutput.format(_z);
+  var f = getFeed(feed);
+  if (x || y || z) {
+    if (pendingRadiusCompensation >= 0) {
+      pendingRadiusCompensation = -1;
+      var d = tool.diameterOffset;
+      if (d > 512) {
+        warning(localize("The diameter offset exceeds the maximum value."));
+      }
+      writeBlock(gPlaneModal.format(17));
+      switch (radiusCompensation) {
+      case RADIUS_COMPENSATION_LEFT:
+        dOutput.reset();
+        writeBlock(gMotionModal.format(1), gFormat.format(41), x, y, z, dOutput.format(d), f);
+        break;
+      case RADIUS_COMPENSATION_RIGHT:
+        dOutput.reset();
+        writeBlock(gMotionModal.format(1), gFormat.format(42), x, y, z, dOutput.format(d), f);
+        break;
+      default:
+        writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
+      }
+    } else {
+      writeBlock(gMotionModal.format(1), x, y, z, f);
+    }
+  } else if (f) {
+    if (getNextRecord().isMotion()) { // try not to output feed without motion
+      forceFeed(); // force feed on next line
+    } else {
+      writeBlock(gMotionModal.format(1), f);
+    }
+  }
+}
+
+function onRapid5D(_x, _y, _z, _a, _b, _c) {
+  if (pendingRadiusCompensation >= 0) {
+    error(localize("Radius compensation mode cannot be changed at rapid traversal."));
+    return;
+  }
+  if (!currentSection.isOptimizedForMachine()) {
+    forceXYZ();
+  }
+  var x = xOutput.format(_x);
+  var y = yOutput.format(_y);
+  var z = zOutput.format(_z);
+  var a = currentSection.isOptimizedForMachine() ? aOutput.format(_a) : toolVectorOutputI.format(_a);
+  var b = currentSection.isOptimizedForMachine() ? bOutput.format(_b) : toolVectorOutputJ.format(_b);
+  var c = currentSection.isOptimizedForMachine() ? cOutput.format(_c) : toolVectorOutputK.format(_c);
+
+  if (x || y || z || a || b || c) {
+    writeBlock(gMotionModal.format(0), x, y, z, a, b, c);
+    forceFeed();
+  }
+}
+
+function onLinear5D(_x, _y, _z, _a, _b, _c, feed, feedMode) {
+  if (pendingRadiusCompensation >= 0) {
+    error(localize("Radius compensation cannot be activated/deactivated for 5-axis move."));
+    return;
+  }
+  if (!currentSection.isOptimizedForMachine()) {
+    forceXYZ();
+  }
+  var x = xOutput.format(_x);
+  var y = yOutput.format(_y);
+  var z = zOutput.format(_z);
+  var a = currentSection.isOptimizedForMachine() ? aOutput.format(_a) : toolVectorOutputI.format(_a);
+  var b = currentSection.isOptimizedForMachine() ? bOutput.format(_b) : toolVectorOutputJ.format(_b);
+  var c = currentSection.isOptimizedForMachine() ? cOutput.format(_c) : toolVectorOutputK.format(_c);
+  if (feedMode == FEED_INVERSE_TIME) {
+    forceFeed();
+  }
+  var f = feedMode == FEED_INVERSE_TIME ? inverseTimeOutput.format(feed) : getFeed(feed);
+  var fMode = feedMode == FEED_INVERSE_TIME ? 93 : getProperty("useG95") ? 95 : 94;
+
+  if (x || y || z || a || b || c) {
+    writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), x, y, z, a, b, c, f);
+  } else if (f) {
+    if (getNextRecord().isMotion()) { // try not to output feed without motion
+      forceFeed(); // force feed on next line
+    } else {
+      writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), f);
+    }
+  }
+}
+
+function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
+  if (isSpiral()) {
+    var startRadius = getCircularStartRadius();
+    var endRadius = getCircularRadius();
+    var dr = Math.abs(endRadius - startRadius);
+    if (dr > maximumCircularRadiiDifference) { // maximum limit
+      linearize(tolerance); // or alternatively use other G-codes for spiral motion
+      return;
+    }
+  }
+
+  if (pendingRadiusCompensation >= 0) {
+    error(localize("Radius compensation cannot be activated/deactivated for a circular move."));
+    return;
+  }
+
+  var start = getCurrentPosition();
+
+  if (isFullCircle()) {
+    if (getProperty("useRadius") || isHelical()) { // radius mode does not support full arcs
+      linearize(tolerance);
+      return;
+    }
+    switch (getCircularPlane()) {
+    case PLANE_XY:
+      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), getFeed(feed));
+      break;
+    case PLANE_ZX:
+      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
+      break;
+    case PLANE_YZ:
+      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), jOutput.format(cy - start.y, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
+      break;
+    default:
+      linearize(tolerance);
+    }
+  } else if (!getProperty("useRadius")) {
+    switch (getCircularPlane()) {
+    case PLANE_XY:
+      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), getFeed(feed));
+      break;
+    case PLANE_ZX:
+      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
+      break;
+    case PLANE_YZ:
+      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), jOutput.format(cy - start.y, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
+      break;
+    default:
+      linearize(tolerance);
+    }
+  } else { // use radius mode
+    var r = getCircularRadius();
+    if (toDeg(getCircularSweep()) > (180 + 1e-9)) {
+      r = -r; // allow up to <360 deg arcs
+    }
+    switch (getCircularPlane()) {
+    case PLANE_XY:
+      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
+      break;
+    case PLANE_ZX:
+      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
+      break;
+    case PLANE_YZ:
+      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
+      break;
+    default:
+      linearize(tolerance);
+    }
+  }
+}
+
+var mapCommand = {
+  COMMAND_END                     : 2,
+  COMMAND_SPINDLE_CLOCKWISE       : 3,
+  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
+  COMMAND_STOP_SPINDLE            : 5,
+  COMMAND_ORIENTATE_SPINDLE       : 19,
+  COMMAND_LOAD_TOOL               : 6
+};
+
+function onCommand(command) {
+  switch (command) {
+  case COMMAND_STOP:
+    writeBlock(mFormat.format(0));
+    forceSpindleSpeed = true;
+    forceCoolant = true;
+    return;
+  case COMMAND_OPTIONAL_STOP:
+    writeBlock(mFormat.format(1));
+    forceSpindleSpeed = true;
+    forceCoolant = true;
+    return;
+  case COMMAND_COOLANT_ON:
+    setCoolant(COOLANT_FLOOD);
+    return;
+  case COMMAND_COOLANT_OFF:
+    setCoolant(COOLANT_OFF);
+    return;
+  case COMMAND_START_SPINDLE:
+    onCommand(tool.clockwise ? COMMAND_SPINDLE_CLOCKWISE : COMMAND_SPINDLE_COUNTERCLOCKWISE);
+    return;
+  case COMMAND_LOCK_MULTI_AXIS:
+    if (machineConfiguration.isMultiAxisConfiguration() && (machineConfiguration.getNumberOfAxes() >= 4)) {
+      writeBlock(mClampModal.format(44)); // lock 4th-axis motion
+      if (machineConfiguration.getNumberOfAxes() == 5) {
+        writeBlock(mClampModal.format(47)); // lock 5th-axis motion
+      }
+    }
+    return;
+  case COMMAND_UNLOCK_MULTI_AXIS:
+    var outputClampCodes = getProperty("useClampCodes") || currentSection.isMultiAxis();
+    if (outputClampCodes && machineConfiguration.isMultiAxisConfiguration() && (machineConfiguration.getNumberOfAxes() >= 4)) {
+      writeBlock(mClampModal.format(43)); // unlock 4th-axis motion
+      if (machineConfiguration.getNumberOfAxes() == 5) {
+        writeBlock(mClampModal.format(46)); // unlock 5th-axis motion
+      }
+    }
+    return;
+  case COMMAND_START_CHIP_TRANSPORT:
+    return;
+  case COMMAND_STOP_CHIP_TRANSPORT:
+    return;
+  case COMMAND_BREAK_CONTROL:
+    return;
+  case COMMAND_TOOL_MEASURE:
+    return;
+  case COMMAND_PROBE_ON:
+    return;
+  case COMMAND_PROBE_OFF:
+    return;
+  }
+
+  var stringId = getCommandStringId(command);
+  var mcode = mapCommand[stringId];
+  if (mcode != undefined) {
+    writeBlock(mFormat.format(mcode));
+  } else {
+    onUnsupportedCommand(command);
+  }
+}
+
+function onSectionEnd() {
+  if (typeof inspectionProcessSectionEnd == "function") {
+    inspectionProcessSectionEnd();
+  }
+
+  if (currentSection.isMultiAxis()) {
+    writeBlock(gFeedModeModal.format(94)); // inverse time feed off
+  }
+
+  writeBlock(gPlaneModal.format(17));
+  if (!isLastSection() && (getNextSection().getTool().coolant != tool.coolant)) {
+    setCoolant(COOLANT_OFF);
+  }
+  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
+      (tool.number != getNextSection().getTool().number)) {
+    onCommand(COMMAND_BREAK_CONTROL);
+  }
+
+  if (isProbeOperation()) {
+    writeBlock(gFormat.format(65), "P" + 9833); // spin the probe off
+    if (settings.probing.probeAngleMethod != "G68") {
+      setProbeAngle(); // output probe angle rotations if required
+    }
+  }
+  forceAny();
+}
+
+// Start of onRewindMachine logic
+/** Allow user to override the onRewind logic. */
+function onRewindMachineEntry(_a, _b, _c) {
+  return false;
+}
+
+/** Retract to safe position before indexing rotaries. */
+function onMoveToSafeRetractPosition() {
+  writeRetract(Z);
+  // cancel TCP so that tool doesn't follow rotaries
+  if (currentSection.isMultiAxis() && operationSupportsTCP) {
+    disableLengthCompensation(false, "TCPC OFF");
+  }
+}
+
+/** Rotate axes to new position above reentry position */
+function onRotateAxes(_x, _y, _z, _a, _b, _c) {
+  // position rotary axes
+  xOutput.disable();
+  yOutput.disable();
+  zOutput.disable();
+  invokeOnRapid5D(_x, _y, _z, _a, _b, _c);
+  setCurrentABC(new Vector(_a, _b, _c));
+  xOutput.enable();
+  yOutput.enable();
+  zOutput.enable();
+}
+
+/** Return from safe position after indexing rotaries. */
+function onReturnFromSafeRetractPosition(_x, _y, _z) {
+  // reinstate TCP / tool length compensation
+  if (!lengthCompensationActive) {
+    writeBlock(gFormat.format(getOffsetCode()), hFormat.format(tool.lengthOffset));
+    lengthCompensationActive = true;
+  }
+
+  // position in XY
+  forceXYZ();
+  xOutput.reset();
+  yOutput.reset();
+  zOutput.disable();
+  invokeOnRapid(_x, _y, _z);
+
+  // position in Z
+  zOutput.enable();
+  invokeOnRapid(_x, _y, _z);
+}
+// End of onRewindMachine logic
+
+function onClose() {
+  if (isDPRNTopen) {
+    writeln("DPRNT[END]");
+    writeBlock("PCLOS");
+    isDPRNTopen = false;
+    if (typeof inspectionProcessSectionEnd == "function") {
+      inspectionProcessSectionEnd();
+    }
+  }
+
+  if (settings.probing.probeAngleMethod == "G68") {
+    cancelWorkPlane();
+  }
+  writeln("");
+
+  onCommand(COMMAND_STOP_SPINDLE);
+  onCommand(COMMAND_COOLANT_OFF);
+
+  writeRetract(Z);
+  disableLengthCompensation(true);
+
+  setSmoothing(false);
+
+  setWorkPlane(new Vector(0, 0, 0)); // reset working plane
+
+  if (settings.probing.probeAngleMethod == "G54.4") {
+    writeBlock(gFormat.format(54.4), "P0");
+  }
+
+  onImpliedCommand(COMMAND_END);
+  onImpliedCommand(COMMAND_STOP_SPINDLE);
+  writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
+}
+
+// >>>>> INCLUDED FROM include_files/commonFunctions.cpi
 // internal variables, do not change
 var receivedMachineConfiguration;
 var operationSupportsTCP;
 var multiAxisFeedrate;
+var sequenceNumber;
+var optionalSection = false;
+var currentWorkOffset;
+var forceSpindleSpeed = false;
+var retracted = false; // specifies that the tool has been retracted to the safe plane
+var operationNeedsSafeStart = false; // used to convert blocks to optional for safeStartAllOperations
 
 function activateMachine() {
   // disable unsupported rotary axes output
@@ -378,11 +1382,11 @@ function activateMachine() {
     cOutput.disable();
   }
 
-  // setup usage of multiAxisFeatures
-  useMultiAxisFeatures = getProperty("useMultiAxisFeatures") != undefined ? getProperty("useMultiAxisFeatures") :
-    (typeof useMultiAxisFeatures != "undefined" ? useMultiAxisFeatures : false);
-  useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
-    (typeof useABCPrepositioning != "undefined" ? useABCPrepositioning : false);
+  // setup usage of useTiltedWorkplane
+  settings.workPlaneMethod.useTiltedWorkplane = getProperty("useTiltedWorkplane") != undefined ? getProperty("useTiltedWorkplane") :
+    (settings.workPlaneMethod.useTiltedWorkplane != undefined ? settings.workPlaneMethod.useTiltedWorkplane : false);
+  settings.workPlaneMethod.useABCPrepositioning = getProperty("useABCPrepositioning") != undefined ? getProperty("useABCPrepositioning") :
+    (settings.workPlaneMethod.useABCPrepositioning != undefined ? settings.workPlaneMethod.useABCPrepositioning : false);
 
   if (!machineConfiguration.isMultiAxisConfiguration()) {
     return; // don't need to modify any settings for 3-axis machines
@@ -437,6 +1441,166 @@ function getBodyLength(tool) {
   return tool.bodyLength + tool.holderLength;
 }
 
+function getFeed(f) {
+  if (getProperty("useG95")) {
+    return feedOutput.format(f / spindleSpeed); // use feed value
+  }
+  if (typeof activeMovements != "undefined" && activeMovements) {
+    var feedContext = activeMovements[movement];
+    if (feedContext != undefined) {
+      if (!feedFormat.areDifferent(feedContext.feed, f)) {
+        if (feedContext.id == currentFeedId) {
+          return ""; // nothing has changed
+        }
+        forceFeed();
+        currentFeedId = feedContext.id;
+        return settings.parametricFeeds.feedOutputVariable + (settings.parametricFeeds.firstFeedParameter + feedContext.id);
+      }
+    }
+    currentFeedId = undefined; // force parametric feed next time
+  }
+  return feedOutput.format(f); // use feed value
+}
+
+function validateInitialWCS() {
+  if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
+    for (var i = 0; i < getNumberOfSections(); ++i) {
+      if (getSection(i).workOffset > 0) {
+        error(localize("Using multiple work offsets is not possible if the initial work offset is 0."));
+        return;
+      }
+    }
+  }
+}
+
+function forceFeed() {
+  currentFeedId = undefined;
+  feedOutput.reset();
+}
+
+/** Force output of X, Y, and Z. */
+function forceXYZ() {
+  xOutput.reset();
+  yOutput.reset();
+  zOutput.reset();
+}
+
+/** Force output of A, B, and C. */
+function forceABC() {
+  aOutput.reset();
+  bOutput.reset();
+  cOutput.reset();
+}
+
+/** Force output of X, Y, Z, A, B, C, and F on next output. */
+function forceAny() {
+  forceXYZ();
+  forceABC();
+  forceFeed();
+}
+
+/**
+  Writes the specified block.
+*/
+function writeBlock() {
+  var text = formatWords(arguments);
+  if (!text) {
+    return;
+  }
+  if (getProperty("showSequenceNumbers") == "true") {
+    if (sequenceNumber == undefined || sequenceNumber >= settings.maximumSequenceNumber) {
+      sequenceNumber = getProperty("sequenceNumberStart");
+    }
+    if (optionalSection || skipBlocks) {
+      if (text) {
+        writeWords("/", "N" + sequenceNumber, text);
+      }
+    } else {
+      writeWords2("N" + sequenceNumber, arguments);
+    }
+    sequenceNumber += getProperty("sequenceNumberIncrement");
+  } else {
+    if (optionalSection || skipBlocks) {
+      writeWords2("/", arguments);
+    } else {
+      writeWords(arguments);
+    }
+  }
+}
+
+validate(settings.comments, "Setting 'comments' is required but not defined.");
+function formatComment(text) {
+  var prefix = settings.comments.prefix;
+  var suffix = settings.comments.suffix;
+  text = settings.comments.upperCase ? text.toUpperCase() : text;
+  text = filterText(String(text), settings.comments.permittedCommentChars).replace(/[()]/g, "");
+  text = String(text).substring(0, settings.comments.maximumLineLength - prefix.length - suffix.length);
+  return text != "" ?  prefix + text + suffix : "";
+}
+
+/**
+  Output a comment.
+*/
+function writeComment(text) {
+  if (!text) {
+    return;
+  }
+  var comments = String(text).split("\n");
+  for (comment in comments) {
+    writeln(formatComment(comments[comment]));
+  }
+}
+
+function onComment(text) {
+  writeComment(text);
+}
+
+/**
+  Writes the specified block - used for tool changes only.
+*/
+function writeToolBlock() {
+  var show = getProperty("showSequenceNumbers");
+  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
+  writeBlock(arguments);
+  setProperty("showSequenceNumbers", show);
+}
+
+var skipBlocks = false;
+function writeStartBlocks(isRequired, code) {
+  var safeSkipBlocks = skipBlocks;
+  if (!isRequired) {
+    if (!getProperty("safeStartAllOperations", false)) {
+      return; // when safeStartAllOperations is disabled, dont output code and return
+    }
+    // if values are not required, but safe start is enabled - write following blocks as optional
+    skipBlocks = true;
+  }
+  code(); // writes out the code which is passed to this function as an argument
+  skipBlocks = safeSkipBlocks; // restore skipBlocks value
+}
+
+var pendingRadiusCompensation = -1;
+function onRadiusCompensation() {
+  pendingRadiusCompensation = radiusCompensation;
+  var allowRadiusCompensation = typeof settings.allowRadiusCompensation != "undefined" ? settings.allowRadiusCompensation : true;
+  if (pendingRadiusCompensation >= 0 && !allowRadiusCompensation) {
+    error(localize("Radius compensation mode is not supported."));
+    return;
+  }
+}
+
+/** Helper function to be able to use a default value for settings which do not exist. */
+function getSetting(_setting, defaultValue) {
+  return _setting != undefined ? _setting : defaultValue;
+}
+
+/** Returns true when subprogram logic does exist into the post. */
+function subprogramsAreSupported() {
+  return typeof subprogramState != "undefined";
+}
+// <<<<< INCLUDED FROM include_files/commonFunctions.cpi
+// >>>>> INCLUDED FROM include_files/defineMachine.cpi
+var compensateToolLength = false; // add the tool length to the pivot distance for nonTCP rotary heads
 function defineMachine() {
   var useTCP = true;
   if (false) { // note: setup your machine here
@@ -489,344 +1653,229 @@ function defineMachine() {
     // machineConfiguration.setRetractPlane(toPreciseUnit(0, IN));
   }
 }
-// End of machine configuration logic
-
-function onOpen() {
-  // define and enable machine configuration
-  receivedMachineConfiguration = machineConfiguration.isReceived();
-
-  if (typeof defineMachine == "function") {
-    defineMachine(); // hardcoded machine configuration
-  }
-  activateMachine(); // enable the machine optimizations and settings
-
-  if (getProperty("useRadius")) {
-    maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
-  }
-  gRotationModal.format(69); // Default to G69 Rotation Off
-  mClampModal.format(44); // Default 4th axis modal code to be clamped
-  mClampModal.format(47); // Default 5th axis modal code to be clamped
-
-  if (!getProperty("separateWordsWithSpace")) {
-    setWordSeparator("");
-  }
-
-  sequenceNumber = getProperty("sequenceNumberStart");
-
-  if (programName) {
-    var programId;
-    try {
-      programId = getAsInt(programName);
-    } catch (e) {
-      error(localize("Program name must be a number."));
-      return;
-    }
-    if (!((programId >= 1) && (programId <= 99999999))) {
-      error(localize("Program number is out of range."));
-      return;
-    }
-    var o4Format = createFormat({width:4, zeropad:true, decimals:0});
-    var o8Format = createFormat({width:8, zeropad:true, decimals:0});
-    var oFormat = (programId <= 9999) ? o4Format : o8Format;
-    if (programComment) {
-      writeln("O" + oFormat.format(programId) + " (" + programComment + ")");
+// <<<<< INCLUDED FROM include_files/defineMachine.cpi
+// >>>>> INCLUDED FROM include_files/defineWorkPlane.cpi
+validate(settings.workPlaneMethod, "Setting 'workPlaneMethod' is required but not defined.");
+function defineWorkPlane(_section, _setWorkPlane) {
+  var abc = new Vector(0, 0, 0);
+  if (settings.workPlaneMethod.forceMultiAxisIndexing || !is3D() || machineConfiguration.isMultiAxisConfiguration()) {
+    if (isPolarModeActive()) {
+      abc = getCurrentDirection();
+    } else if (_section.isMultiAxis()) {
+      cancelTransformation();
+      var allowToolVectorOutput = typeof settings.allowToolVectorOutput != "undefined" ? settings.allowToolVectorOutput : false;
+      if (!machineConfiguration.isMultiAxisConfiguration() && !allowToolVectorOutput) {
+        error(localize("This post configuration requires a machine configuration for 5-axis simultaneous toolpath."));
+      }
+      abc = _section.isOptimizedForMachine() ? _section.getInitialToolAxisABC() : _section.getGlobalInitialToolAxis();
+    } else if (settings.workPlaneMethod.useTiltedWorkplane && settings.workPlaneMethod.eulerConvention != undefined) {
+      if (settings.workPlaneMethod.eulerCalculationMethod == "machine" && machineConfiguration.isMultiAxisConfiguration()) {
+        abc = machineConfiguration.getOrientation(getWorkPlaneMachineABC(_section, true)).getEuler2(settings.workPlaneMethod.eulerConvention);
+      } else {
+        abc = _section.workPlane.getEuler2(settings.workPlaneMethod.eulerConvention);
+      }
     } else {
-      writeln("O" + oFormat.format(programId));
+      abc = getWorkPlaneMachineABC(_section, true);
+    }
+
+    if (_setWorkPlane) {
+      if (_section.isMultiAxis() || isPolarModeActive()) { // 4-5x simultaneous operations
+        cancelWorkPlane();
+        positionABC(abc, true);
+      } else { // 3x and/or 3+2x operations
+        setWorkPlane(abc);
+      }
     }
   } else {
-    error(localize("Program name has not been specified."));
-    return;
+    var remaining = _section.workPlane;
+    if (!isSameDirection(remaining.forward, new Vector(0, 0, 1))) {
+      error(localize("Tool orientation is not supported."));
+      return abc;
+    }
+    setRotation(remaining);
   }
-
-  // dump machine configuration
-  var vendor = machineConfiguration.getVendor();
-  var model = machineConfiguration.getModel();
-  var description = machineConfiguration.getDescription();
-
-  if (getProperty("writeMachine") && (vendor || model || description)) {
-    writeComment(localize("Machine"));
-    if (vendor) {
-      writeComment("  " + localize("vendor") + ": " + vendor);
-    }
-    if (model) {
-      writeComment("  " + localize("model") + ": " + model);
-    }
-    if (description) {
-      writeComment("  " + localize("description") + ": "  + description);
+  if (currentSection && (currentSection.getId() == _section.getId())) {
+    operationSupportsTCP = currentSection.getOptimizedTCPMode() == OPTIMIZE_NONE;
+    if (!currentSection.isMultiAxis() && (settings.workPlaneMethod.useTiltedWorkplane || isSameDirection(machineConfiguration.getSpindleAxis(), currentSection.workPlane.forward))) {
+      operationSupportsTCP = false;
     }
   }
-
-  //Probing Surface Inspection
-  if (typeof inspectionWriteVariables == "function") {
-    inspectionWriteVariables();
+  return abc;
+}
+// <<<<< INCLUDED FROM include_files/defineWorkPlane.cpi
+// >>>>> INCLUDED FROM include_files/getWorkPlaneMachineABC.cpi
+validate(settings.machineAngles, "Setting 'machineAngles' is required but not defined.");
+function getWorkPlaneMachineABC(_section, rotate) {
+  var currentABC = isFirstSection() ? new Vector(0, 0, 0) : getCurrentDirection();
+  var abc = machineConfiguration.getABCByPreference(_section.workPlane, currentABC, settings.machineAngles.controllingAxis, settings.machineAngles.type, settings.machineAngles.options);
+  if (!isSameDirection(machineConfiguration.getDirection(abc), _section.workPlane.forward)) {
+    error(localize("Orientation not supported."));
   }
-
-  // dump tool information
-  if (getProperty("writeTools")) {
-    var zRanges = {};
-    if (is3D()) {
-      var numberOfSections = getNumberOfSections();
-      for (var i = 0; i < numberOfSections; ++i) {
-        var section = getSection(i);
-        var zRange = section.getGlobalZRange();
-        var tool = section.getTool();
-        if (zRanges[tool.number]) {
-          zRanges[tool.number].expandToRange(zRange);
-        } else {
-          zRanges[tool.number] = zRange;
-        }
-      }
-    }
-
-    var tools = getToolTable();
-    if (tools.getNumberOfTools() > 0) {
-      for (var i = 0; i < tools.getNumberOfTools(); ++i) {
-        var tool = tools.getTool(i);
-        var comment = "T" + toolFormat.format(tool.number) + " " +
-          "D=" + xyzFormat.format(tool.diameter) + " " +
-          localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
-        if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
-          comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
-        }
-        if (zRanges[tool.number]) {
-          comment += " - " + localize("ZMIN") + "=" + xyzFormat.format(zRanges[tool.number].getMinimum());
-        }
-        comment += " - " + getToolTypeName(tool.type);
-        writeComment(comment);
+  if (rotate) {
+    if (settings.workPlaneMethod.optimizeType == undefined || settings.workPlaneMethod.useTiltedWorkplane) { // legacy
+      var tcp = false;
+      var R = machineConfiguration.getRemainingOrientation(abc, _section.workPlane);
+      setRotation(tcp ? _section.workPlane : R);
+      setCurrentDirection(currentABC); // temporary fix for currentDirection
+    } else {
+      if (!_section.isOptimizedForMachine()) {
+        machineConfiguration.setToolLength(compensateToolLength ? _section.getTool().overallLength : 0); // define the tool length for head adjustments
+        _section.optimize3DPositionsByMachine(machineConfiguration, abc, settings.workPlaneMethod.optimizeType);
       }
     }
   }
+  return abc;
+}
+// <<<<< INCLUDED FROM include_files/getWorkPlaneMachineABC.cpi
+// >>>>> INCLUDED FROM include_files/coolant.cpi
+var currentCoolantMode = COOLANT_OFF;
+var coolantOff = undefined;
+var isOptionalCoolant = false;
+var forceCoolant = false;
 
-  if (false) {
-    // check for duplicate tool number
-    for (var i = 0; i < getNumberOfSections(); ++i) {
-      var sectioni = getSection(i);
-      var tooli = sectioni.getTool();
-      for (var j = i + 1; j < getNumberOfSections(); ++j) {
-        var sectionj = getSection(j);
-        var toolj = sectionj.getTool();
-        if (tooli.number == toolj.number) {
-          if (xyzFormat.areDifferent(tooli.diameter, toolj.diameter) ||
-              xyzFormat.areDifferent(tooli.cornerRadius, toolj.cornerRadius) ||
-              abcFormat.areDifferent(tooli.taperAngle, toolj.taperAngle) ||
-              (tooli.numberOfFlutes != toolj.numberOfFlutes)) {
-            error(
-              subst(
-                localize("Using the same tool number for different cutter geometry for operation '%1' and '%2'."),
-                sectioni.hasParameter("operation-comment") ? sectioni.getParameter("operation-comment") : ("#" + (i + 1)),
-                sectionj.hasParameter("operation-comment") ? sectionj.getParameter("operation-comment") : ("#" + (j + 1))
-              )
-            );
-            return;
+function setCoolant(coolant) {
+  var coolantCodes = getCoolantCodes(coolant);
+  if (Array.isArray(coolantCodes)) {
+    writeStartBlocks(!isOptionalCoolant, function () {
+      if (settings.coolant.singleLineCoolant) {
+        writeBlock(coolantCodes.join(getWordSeparator()));
+      } else {
+        for (var c in coolantCodes) {
+          writeBlock(coolantCodes[c]);
+        }
+      }
+    });
+    return undefined;
+  }
+  return coolantCodes;
+}
+
+function getCoolantCodes(coolant, format) {
+  isOptionalCoolant = false;
+  if (typeof operationNeedsSafeStart == "undefined") {
+    operationNeedsSafeStart = false;
+  }
+  var multipleCoolantBlocks = new Array(); // create a formatted array to be passed into the outputted line
+  var coolants = settings.coolant.coolants;
+  if (!coolants) {
+    error(localize("Coolants have not been defined."));
+  }
+  if (tool.type == TOOL_PROBE) { // avoid coolant output for probing
+    coolant = COOLANT_OFF;
+  }
+  if (coolant == currentCoolantMode) {
+    if (operationNeedsSafeStart && coolant != COOLANT_OFF) {
+      isOptionalCoolant = true;
+    } else if (!forceCoolant || coolant == COOLANT_OFF) {
+      return undefined; // coolant is already active
+    }
+  }
+  if ((coolant != COOLANT_OFF) && (currentCoolantMode != COOLANT_OFF) && (coolantOff != undefined) && !forceCoolant && !isOptionalCoolant) {
+    if (Array.isArray(coolantOff)) {
+      for (var i in coolantOff) {
+        multipleCoolantBlocks.push(coolantOff[i]);
+      }
+    } else {
+      multipleCoolantBlocks.push(coolantOff);
+    }
+  }
+  forceCoolant = false;
+
+  var m;
+  var coolantCodes = {};
+  for (var c in coolants) { // find required coolant codes into the coolants array
+    if (coolants[c].id == coolant) {
+      coolantCodes.on = coolants[c].on;
+      if (coolants[c].off != undefined) {
+        coolantCodes.off = coolants[c].off;
+        break;
+      } else {
+        for (var i in coolants) {
+          if (coolants[i].id == COOLANT_OFF) {
+            coolantCodes.off = coolants[i].off;
+            break;
           }
         }
       }
     }
   }
+  if (coolant == COOLANT_OFF) {
+    m = !coolantOff ? coolantCodes.off : coolantOff; // use the default coolant off command when an 'off' value is not specified
+  } else {
+    coolantOff = coolantCodes.off;
+    m = coolantCodes.on;
+  }
 
-  if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
-    for (var i = 0; i < getNumberOfSections(); ++i) {
-      if (getSection(i).workOffset > 0) {
-        error(localize("Using multiple work offsets is not possible if the initial work offset is 0."));
-        return;
+  if (!m) {
+    onUnsupportedCoolant(coolant);
+    m = 9;
+  } else {
+    if (Array.isArray(m)) {
+      for (var i in m) {
+        multipleCoolantBlocks.push(m[i]);
+      }
+    } else {
+      multipleCoolantBlocks.push(m);
+    }
+    currentCoolantMode = coolant;
+    for (var i in multipleCoolantBlocks) {
+      if (typeof multipleCoolantBlocks[i] == "number") {
+        multipleCoolantBlocks[i] = mFormat.format(multipleCoolantBlocks[i]);
       }
     }
-  }
-
-  // absolute coordinates and feed per min
-  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94), gPlaneModal.format(17), gFormat.format(49));
-
-  switch (unit) {
-  case IN:
-    writeBlock(gUnitModal.format(20));
-    break;
-  case MM:
-    writeBlock(gUnitModal.format(21));
-    break;
-  }
-
-  onCommand(COMMAND_START_CHIP_TRANSPORT);
-}
-
-function onComment(message) {
-  writeComment(message);
-}
-
-/** Force output of X, Y, and Z. */
-function forceXYZ() {
-  xOutput.reset();
-  yOutput.reset();
-  zOutput.reset();
-}
-
-/** Force output of A, B, and C. */
-function forceABC() {
-  aOutput.reset();
-  bOutput.reset();
-  cOutput.reset();
-}
-
-function forceFeed() {
-  currentFeedId = undefined;
-  feedOutput.reset();
-}
-
-/** Force output of X, Y, Z, A, B, C, and F on next output. */
-function forceAny() {
-  forceXYZ();
-  forceABC();
-  forceFeed();
-}
-
-/** Disables length compensation if currently active or if forced. */
-var lengthCompensationActive = false;
-function disableLengthCompensation(force) {
-  if (lengthCompensationActive || force) {
-    validate(retracted, "Cannot cancel length compensation if the machine is not fully retracted.");
-    writeBlock(gFormat.format(49));
-    lengthCompensationActive = false;
-  }
-}
-
-function getOffsetCode() {
-  var offsetCode = 43;
-  if (currentSection.isMultiAxis()) {
-    if (machineConfiguration.isMultiAxisConfiguration() && operationSupportsTCP) {
-      offsetCode = 43.4;
-    } else if (!machineConfiguration.isMultiAxisConfiguration()) {
-      offsetCode = 43.5;
+    if (format == undefined || format) {
+      return multipleCoolantBlocks; // return the single formatted coolant value
+    } else {
+      return m; // return unformatted coolant value
     }
   }
-  return offsetCode;
+  return undefined;
 }
-
-// Start of smoothing logic
-var smoothingSettings = {
-  roughing          : 1, // roughing level for smoothing in automatic mode
-  semi              : 2, // semi-roughing level for smoothing in automatic mode
-  finishing         : 3, // finishing level for smoothing in automatic mode
-  thresholdRoughing : toPreciseUnit(0.1, MM), // operations with stock/tolerance above that threshold will use roughing level in automatic mode
-  thresholdFinishing: toPreciseUnit(0.01, MM), // operations with stock/tolerance below that threshold will use finishing level in automatic mode
-  differenceCriteria: "level", // options: "level", "tolerance", "both". Specifies criteria when output smoothing codes
-  autoLevelCriteria : "stock", // use "stock" or "tolerance" to determine levels in automatic mode
-  cancelCompensation: true // tool length compensation must be canceled prior to changing the smoothing level
-};
-
-// collected state below, do not edit
-var smoothing = {
-  cancel     : false, // cancel tool length prior to update smoothing for this operation
-  isActive   : false, // the current state of smoothing
-  isAllowed  : false, // smoothing is allowed for this operation
-  isDifferent: false, // tells if smoothing levels/tolerances/both are different between operations
-  level      : -1, // the active level of smoothing
-  tolerance  : -1, // the current operation tolerance
-  force      : false // smoothing needs to be forced out in this operation
-};
-
-function initializeSmoothing() {
-  var previousLevel = smoothing.level;
-  var previousTolerance = smoothing.tolerance;
-
-  // determine new smoothing levels and tolerances
-  smoothing.level = parseInt(getProperty("useSmoothing"), 10);
-  smoothing.level = isNaN(smoothing.level) ? -1 : smoothing.level;
-  smoothing.tolerance = Math.max(getParameter("operation:tolerance", 0), 0);
-
-  // automatically determine smoothing level
-  if (smoothing.level == 9999) {
-    if (smoothingSettings.autoLevelCriteria == "stock") { // determine auto smoothing level based on stockToLeave
-      var stockToLeave = xyzFormat.getResultingValue(getParameter("operation:stockToLeave", 0));
-      var verticalStockToLeave = xyzFormat.getResultingValue(getParameter("operation:verticalStockToLeave", 0));
-      if ((stockToLeave >= smoothingSettings.thresholdRoughing) && (verticalStockToLeave >= smoothingSettings.thresholdRoughing)) {
-        smoothing.level = smoothingSettings.roughing; // set roughing level
+// <<<<< INCLUDED FROM include_files/coolant.cpi
+// >>>>> INCLUDED FROM include_files/positionABC.cpi
+function positionABC(abc, force) {
+  if (typeof unwindABC == "function") {
+    unwindABC(abc);
+  }
+  if (force) {
+    forceABC();
+  }
+  var a = machineConfiguration.isMultiAxisConfiguration() ? aOutput.format(abc.x) : toolVectorOutputI.format(abc.x);
+  var b = machineConfiguration.isMultiAxisConfiguration() ? bOutput.format(abc.y) : toolVectorOutputJ.format(abc.y);
+  var c = machineConfiguration.isMultiAxisConfiguration() ? cOutput.format(abc.z) : toolVectorOutputK.format(abc.z);
+  if (a || b || c) {
+    if (!retracted) {
+      if (typeof moveToSafeRetractPosition == "function") {
+        moveToSafeRetractPosition();
       } else {
-        if ((stockToLeave >= smoothingSettings.thresholdFinishing) && (verticalStockToLeave >= smoothingSettings.thresholdFinishing)) { //???
-          smoothing.level = smoothingSettings.semi; // set semi level
-        } else {
-          smoothing.level = smoothingSettings.finishing; // set finishing level
-        }
+        writeRetract(Z);
       }
-    } else { // detemine auto smoothing level based on operation tolerance instead of stockToLeave
-      smoothing.level = smoothing.tolerance < smoothingSettings.thresholdRoughing ? smoothing.tolerance > smoothingSettings.thresholdFinishing ?
-        smoothingSettings.semi : smoothingSettings.finishing : smoothingSettings.roughing;
+    }
+    onCommand(COMMAND_UNLOCK_MULTI_AXIS);
+    gMotionModal.reset();
+    writeBlock(gMotionModal.format(0), a, b, c);
+
+    if (getCurrentSectionId() != -1) {
+      setCurrentABC(abc); // required for machine simulation
     }
   }
-
-  if (smoothing.level == -1) { // useSmoothing is disabled
-    smoothing.isAllowed = false;
-  } else { // do not output smoothing for the following operations
-    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
-  }
-  if (!smoothing.isAllowed) {
-    smoothing.level = -1;
-    smoothing.tolerance = -1;
-  }
-
-  switch (smoothingSettings.differenceCriteria) {
-  case "level":
-    smoothing.isDifferent = smoothing.level != previousLevel;
-    break;
-  case "tolerance":
-    smoothing.isDifferent = xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
-    break;
-  case "both":
-    smoothing.isDifferent = smoothing.level != previousLevel || xyzFormat.areDifferent(smoothing.tolerance, previousTolerance);
-    break;
-  default:
-    error(localize("Unsupported smoothing criteria."));
+}
+// <<<<< INCLUDED FROM include_files/positionABC.cpi
+// >>>>> INCLUDED FROM include_files/parametricFeeds.cpi
+var activeMovements;
+var currentFeedId;
+validate(settings.parametricFeeds, "Setting 'parametricFeeds' is required but not defined.");
+function initializeParametricFeeds(insertToolCall) {
+  if (getProperty("useParametricFeed") && getParameter("operation-strategy") != "drill" && !currentSection.hasAnyCycle()) {
+    if (!insertToolCall && activeMovements && (getCurrentSectionId() > 0) &&
+      ((getPreviousSection().getPatternId() == currentSection.getPatternId()) && (currentSection.getPatternId() != 0))) {
+      return; // use the current feeds
+    }
+  } else {
+    activeMovements = undefined;
     return;
   }
 
-  // tool length compensation needs to be canceled when smoothing state/level changes
-  if (smoothingSettings.cancelCompensation) {
-    smoothing.cancel = !isFirstSection() && smoothing.isDifferent;
-  }
-}
-
-function setSmoothing(mode) {
-  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent) && !smoothing.force) {
-    return; // return if smoothing is already active or is not different
-  }
-  if (typeof lengthCompensationActive != "undefined" && smoothingSettings.cancelCompensation) {
-    validate(!lengthCompensationActive, "Length compensation is active while trying to update smoothing.");
-  }
-
-  if (mode) { // enable smoothing
-    writeBlock(gFormat.format(5), "P2");
-  } else { // disable smoothing
-    writeBlock(gFormat.format(5), "P0");
-  }
-  smoothing.isActive = mode;
-  smoothing.force = false;
-  smoothing.isDifferent = false;
-}
-// End of smoothing logic
-
-function FeedContext(id, description, feed) {
-  this.id = id;
-  this.description = description;
-  this.feed = feed;
-}
-
-function getFeed(f) {
-  if (activeMovements) {
-    var feedContext = activeMovements[movement];
-    if (feedContext != undefined) {
-      if (!feedFormat.areDifferent(feedContext.feed, f)) {
-        if (feedContext.id == currentFeedId) {
-          return ""; // nothing has changed
-        }
-        forceFeed();
-        currentFeedId = feedContext.id;
-        return "F#" + (firstFeedParameter + feedContext.id);
-      }
-    }
-    currentFeedId = undefined; // force Q feed next time
-  }
-  return feedOutput.format(f); // use feed value
-}
-
-function initializeActiveFeeds() {
   activeMovements = new Array();
   var movements = currentSection.getMovements();
 
@@ -947,1493 +1996,19 @@ function initializeActiveFeeds() {
 
   for (var i = 0; i < activeFeeds.length; ++i) {
     var feedContext = activeFeeds[i];
-    writeBlock("#" + (firstFeedParameter + feedContext.id) + "=" + feedFormat.format(feedContext.feed), formatComment(feedContext.description));
+    var feedDescription = typeof formatComment == "function" ? formatComment(feedContext.description) : feedContext.description;
+    writeBlock(settings.parametricFeeds.feedAssignmentVariable + (settings.parametricFeeds.firstFeedParameter + feedContext.id) + "=" + feedFormat.format(feedContext.feed) + SP + feedDescription);
   }
 }
 
-var currentWorkPlaneABC = undefined;
-
-function forceWorkPlane() {
-  currentWorkPlaneABC = undefined;
+function FeedContext(id, description, feed) {
+  this.id = id;
+  this.description = description;
+  this.feed = feed;
 }
-
-function cancelWorkPlane(force) {
-  if (force) {
-    gRotationModal.reset();
-  }
-  writeBlock(gRotationModal.format(69)); // cancel frame
-  forceWorkPlane();
-}
-
-function setWorkPlane(abc) {
-  if (!forceMultiAxisIndexing && is3D() && !machineConfiguration.isMultiAxisConfiguration()) {
-    return; // ignore
-  }
-
-  if (!((currentWorkPlaneABC == undefined) ||
-        abcFormat.areDifferent(abc.x, currentWorkPlaneABC.x) ||
-        abcFormat.areDifferent(abc.y, currentWorkPlaneABC.y) ||
-        abcFormat.areDifferent(abc.z, currentWorkPlaneABC.z))) {
-    return; // no change
-  }
-
-  onCommand(COMMAND_UNLOCK_MULTI_AXIS);
-  if (!retracted) {
-    writeRetract(Z);
-  }
-
-  if (useMultiAxisFeatures) {
-    if (cancelTiltFirst) {
-      cancelWorkPlane();
-    }
-    var machineABC = new Vector(0, 0, 0);
-    if (machineConfiguration.isMultiAxisConfiguration()) {
-      machineABC = abc.isNonZero() ? getWorkPlaneMachineABC(currentSection.workPlane, false, false) : abc;
-      if (useABCPrepositioning || abc.isZero()) {
-        gMotionModal.reset();
-        writeBlock(
-          gMotionModal.format(0),
-          conditional(machineConfiguration.isMachineCoordinate(0), "A" + abcFormat.format(machineABC.x)),
-          conditional(machineConfiguration.isMachineCoordinate(1), "B" + abcFormat.format(machineABC.y)),
-          conditional(machineConfiguration.isMachineCoordinate(2), "C" + abcFormat.format(machineABC.z))
-        );
-      }
-      setCurrentABC(machineABC); // required for machine simulation
-    }
-    if (abc.isNonZero()) {
-      gRotationModal.reset();
-      writeBlock(gRotationModal.format(68.2), "X" + xyzFormat.format(0), "Y" + xyzFormat.format(0), "Z" + xyzFormat.format(0), "I" + abcFormat.format(abc.x), "J" + abcFormat.format(abc.y), "K" + abcFormat.format(abc.z)); // set frame
-      var dir = "";
-      if (machineConfiguration.isMultiAxisConfiguration()) {
-        var preference = abcFormat.format(machineABC.getCoordinate(machineConfiguration.getAxisU().getCoordinate()));
-        dir =  preference == 0 ? "" : (preference > 0 ? "P1" : "P2");
-      }
-      writeBlock(gFormat.format(53.1), dir); // turn machine
-    } else {
-      if (!cancelTiltFirst) {
-        cancelWorkPlane();
-      }
-      //G53.1 is not to be called when A0 C0
-      //writeBlock(gFormat.format(53.1)); // turn machine
-    }
-  } else {
-    writeBlock(
-      gMotionModal.format(0),
-      conditional(machineConfiguration.isMachineCoordinate(0), "A" + abcFormat.format(abc.x)),
-      conditional(machineConfiguration.isMachineCoordinate(1), "B" + abcFormat.format(abc.y)),
-      conditional(machineConfiguration.isMachineCoordinate(2), "C" + abcFormat.format(abc.z))
-    );
-    setCurrentABC(abc); // required for machine simulation
-  }
-  if (!currentSection.isMultiAxis() && !isPolarModeActive()) {
-    onCommand(COMMAND_LOCK_MULTI_AXIS);
-  }
-
-  currentWorkPlaneABC = abc;
-}
-
-function getWorkPlaneMachineABC(workPlane, _setWorkPlane, rotate) {
-  var W = workPlane; // map to global frame
-
-  var currentABC = isFirstSection() ? new Vector(0, 0, 0) : getCurrentDirection();
-  var abc = machineConfiguration.getABCByPreference(W, currentABC, ABC, PREFER_PREFERENCE, ENABLE_ALL);
-
-  var direction = machineConfiguration.getDirection(abc);
-  if (!isSameDirection(direction, W.forward)) {
-    error(localize("Orientation not supported."));
-  }
-
-  if (rotate) {
-    var tcp = false;
-    if (tcp) {
-      setRotation(W); // TCP mode
-    } else {
-      var O = machineConfiguration.getOrientation(abc);
-      var R = machineConfiguration.getRemainingOrientation(abc, W);
-      setRotation(R);
-    }
-  }
-  return abc;
-}
-
-function printProbeResults() {
-  return currentSection.getParameter("printResults", 0) == 1;
-}
-
-function onSection() {
-  var insertToolCall = isFirstSection() ||
-    currentSection.getForceToolChange && currentSection.getForceToolChange() ||
-    (tool.number != getPreviousSection().getTool().number);
-
-  retracted = false;
-  var newWorkOffset = isFirstSection() ||
-    (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
-  var newWorkPlane = isFirstSection() ||
-    !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis()) ||
-    (currentSection.isOptimizedForMachine() && getPreviousSection().isOptimizedForMachine() &&
-      Vector.diff(getPreviousSection().getFinalToolAxisABC(), currentSection.getInitialToolAxisABC()).length > 1e-4) ||
-    (!machineConfiguration.isMultiAxisConfiguration() && currentSection.isMultiAxis()) ||
-    (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
-      getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
-  // define smoothing mode
-  initializeSmoothing();
-
-  if (insertToolCall || newWorkOffset || newWorkPlane || smoothing.cancel) {
-    // stop spindle before retract during tool change
-    if (insertToolCall && !isFirstSection()) {
-      onCommand(COMMAND_STOP_SPINDLE);
-    }
-
-    writeRetract(Z);
-    if ((insertToolCall && !isFirstSection()) || smoothing.cancel) {
-      disableLengthCompensation();
-      setSmoothing(false);
-    }
-  }
-
-  writeln("");
-
-  if (hasParameter("operation-comment")) {
-    var comment = getParameter("operation-comment");
-    if (comment) {
-      writeComment(comment);
-    }
-  }
-
-  if (getProperty("showNotes") && hasParameter("notes")) {
-    var notes = getParameter("notes");
-    if (notes) {
-      var lines = String(notes).split("\n");
-      var r1 = new RegExp("^[\\s]+", "g");
-      var r2 = new RegExp("[\\s]+$", "g");
-      for (line in lines) {
-        var comment = lines[line].replace(r1, "").replace(r2, "");
-        if (comment) {
-          writeComment(comment);
-        }
-      }
-    }
-  }
-
-  if (insertToolCall) {
-
-    cancelWorkPlane();
-
-    setCoolant(COOLANT_OFF);
-
-    if (!isFirstSection() && getProperty("optionalStop")) {
-      onCommand(COMMAND_OPTIONAL_STOP);
-    }
-
-    if (tool.number > 100000000) {
-      warning(localize("Tool number exceeds maximum value."));
-    }
-
-    var nextToolCode = "";
-    if (getProperty("preloadTool") != "false") {
-      var nextTool = getNextTool(tool.number);
-      if (nextTool) {
-        nextToolCode = "T" + toolFormat.format(nextTool.number);
-      } else {
-        // preload first tool
-        var firstToolNumber = getFirstTool().number;
-        if (tool.number != firstToolNumber) {
-          nextToolCode = "T" + toolFormat.format(firstToolNumber);
-        } else if (getProperty("preloadTool") == "toolChange") {
-          nextToolCode = "T" + toolFormat.format(0);
-        }
-      }
-    }
-
-    disableLengthCompensation(false);
-    writeToolBlock(
-      "T" + toolFormat.format(tool.number),
-      conditional(getProperty("preloadTool") == "toolChange", nextToolCode),
-      mFormat.format(6));
-    if (tool.comment) {
-      writeComment(tool.comment);
-    }
-    var showToolZMin = false;
-    if (showToolZMin) {
-      if (is3D()) {
-        var numberOfSections = getNumberOfSections();
-        var zRange = currentSection.getGlobalZRange();
-        var number = tool.number;
-        for (var i = currentSection.getId() + 1; i < numberOfSections; ++i) {
-          var section = getSection(i);
-          if (section.getTool().number != number) {
-            break;
-          }
-          zRange.expandToRange(section.getGlobalZRange());
-        }
-        writeComment(localize("ZMIN") + "=" + zRange.getMinimum());
-      }
-    }
-
-    if (getProperty("preloadTool") == "true" && nextToolCode) {
-      writeBlock(nextToolCode);
-    }
-  }
-
-  var spindleChanged = tool.type != TOOL_PROBE &&
-    (insertToolCall || forceSpindleSpeed || isFirstSection() ||
-    (rpmFormat.areDifferent(spindleSpeed, sOutput.getCurrent())) ||
-    (tool.clockwise != getPreviousSection().getTool().clockwise));
-  if (spindleChanged) {
-    forceSpindleSpeed = false;
-
-    if (spindleSpeed < 1) {
-      error(localize("Spindle speed out of range."));
-      return;
-    }
-    if (spindleSpeed > 99999) {
-      warning(localize("Spindle speed exceeds maximum value."));
-    }
-    writeBlock(
-      sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4)
-    );
-
-    if (forceMultiAxisIndexing || !is3D() || machineConfiguration.isMultiAxisConfiguration()) {
-      // writeBlock(mFormat.format(xxx)); // shortest path traverse
-    }
-  }
-
-  // wcs
-  if (insertToolCall) { // force work offset when changing tool
-    currentWorkOffset = undefined;
-  }
-
-  if (currentSection.workOffset != currentWorkOffset) {
-    if (cancelTiltFirst) {
-      cancelWorkPlane();
-    }
-    forceWorkPlane();
-    writeBlock(currentSection.wcs);
-    currentWorkOffset = currentSection.workOffset;
-  }
-
-  forceXYZ();
-  defineWorkPlane(currentSection, true);
-
-  setProbeAngle(); // output probe angle rotations if required
-
-  // set coolant after we have positioned at Z
-  setCoolant(tool.coolant);
-
-  setSmoothing(smoothing.isAllowed);
-
-  forceAny();
-  gMotionModal.reset();
-
-  var initialPosition = getFramePosition(currentSection.getInitialPosition());
-  if (!retracted && !insertToolCall) {
-    if (getCurrentPosition().z < initialPosition.z) {
-      writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
-    }
-  }
-
-  if (insertToolCall || !lengthCompensationActive || retracted || (!isFirstSection() && getPreviousSection().isMultiAxis())) {
-    var lengthOffset = tool.lengthOffset;
-    if (lengthOffset > 512) {
-      error(localize("Length offset out of range."));
-      return;
-    }
-
-    gMotionModal.reset();
-    writeBlock(gPlaneModal.format(17));
-
-    // cancel compensation prior to enabling it, required when switching G43/G43.4 modes
-    disableLengthCompensation(false);
-
-    if (!machineConfiguration.isHeadConfiguration()) {
-      writeBlock(
-        gAbsIncModal.format(90),
-        gMotionModal.format(0), xOutput.format(initialPosition.x), yOutput.format(initialPosition.y)
-      );
-      writeBlock(gMotionModal.format(0), gFormat.format(getOffsetCode()), zOutput.format(initialPosition.z), hFormat.format(lengthOffset));
-      lengthCompensationActive = true;
-    } else {
-      writeBlock(
-        gAbsIncModal.format(90),
-        gMotionModal.format(0),
-        gFormat.format(getOffsetCode()), xOutput.format(initialPosition.x),
-        yOutput.format(initialPosition.y),
-        zOutput.format(initialPosition.z), hFormat.format(lengthOffset)
-      );
-      lengthCompensationActive = true;
-    }
-    gMotionModal.reset();
-  } else {
-    writeBlock(
-      gAbsIncModal.format(90),
-      gMotionModal.format(0),
-      xOutput.format(initialPosition.x),
-      yOutput.format(initialPosition.y)
-    );
-  }
-
-  validate(lengthCompensationActive, "Length compensation is not active.");
-
-  if (getProperty("useParametricFeed") &&
-      hasParameter("operation-strategy") &&
-      (getParameter("operation-strategy") != "drill") && // legacy
-      !(currentSection.hasAnyCycle && currentSection.hasAnyCycle())) {
-    if (!insertToolCall &&
-        activeMovements &&
-        (getCurrentSectionId() > 0) &&
-        ((getPreviousSection().getPatternId() == currentSection.getPatternId()) && (currentSection.getPatternId() != 0))) {
-      // use the current feeds
-    } else {
-      initializeActiveFeeds();
-    }
-  } else {
-    activeMovements = undefined;
-  }
-
-  if (isProbeOperation()) {
-    validate(probeVariables.probeAngleMethod != "G68", "You cannot probe while G68 Rotation is in effect.");
-    validate(probeVariables.probeAngleMethod != "G54.4", "You cannot probe while workpiece setting error compensation G54.4 is enabled.");
-    writeBlock(gFormat.format(65), "P" + 9832); // spin the probe on
-    inspectionCreateResultsFileHeader();
-  } else {
-    // surface Inspection
-    if (isInspectionOperation() && (typeof inspectionProcessSectionStart == "function")) {
-      inspectionProcessSectionStart();
-    }
-  }
-}
-
-function defineWorkPlane(_section, _setWorkPlane) {
-  var abc = new Vector(0, 0, 0);
-  if (forceMultiAxisIndexing || !is3D() || machineConfiguration.isMultiAxisConfiguration()) { // use 5-axis indexing for multi-axis mode
-    // set working plane after datum shift
-
-    if (_section.isMultiAxis()) {
-      cancelTransformation();
-      if (_setWorkPlane) {
-        forceWorkPlane();
-      }
-      gMotionModal.reset();
-      if (machineConfiguration.isMultiAxisConfiguration()) {
-        abc = _section.getInitialToolAxisABC();
-        if (_setWorkPlane) {
-          if (!retracted) {
-            writeRetract(Z);
-          }
-          onCommand(COMMAND_UNLOCK_MULTI_AXIS);
-          writeBlock(
-            gMotionModal.format(0),
-            conditional(machineConfiguration.isMachineCoordinate(0), "A" + abcFormat.format(abc.x)),
-            conditional(machineConfiguration.isMachineCoordinate(1), "B" + abcFormat.format(abc.y)),
-            conditional(machineConfiguration.isMachineCoordinate(2), "C" + abcFormat.format(abc.z))
-          );
-        }
-      } else {
-        if (_setWorkPlane) {
-          var d = _section.getGlobalInitialToolAxis();
-          // position
-          writeBlock(
-            gAbsIncModal.format(90),
-            gMotionModal.format(0),
-            "I" + xyzFormat.format(d.x), "J" + xyzFormat.format(d.y), "K" + xyzFormat.format(d.z)
-          );
-        }
-      }
-    } else {
-      if (useMultiAxisFeatures) {
-        var euler = _section.workPlane.getEuler2(EULER_ZXZ_R);
-        abc = new Vector(euler.x, euler.y, euler.z);
-        cancelTransformation();
-      } else {
-        abc = getWorkPlaneMachineABC(_section.workPlane, _setWorkPlane, true);
-      }
-      if (_setWorkPlane) {
-        setWorkPlane(abc);
-      }
-    }
-  } else { // pure 3D
-    var remaining = _section.workPlane;
-    if (!isSameDirection(remaining.forward, new Vector(0, 0, 1))) {
-      error(localize("Tool orientation is not supported."));
-      return abc;
-    }
-    setRotation(remaining);
-  }
-  if (currentSection && (currentSection.getId() == _section.getId())) {
-    operationSupportsTCP = (_section.isMultiAxis() || !useMultiAxisFeatures) && _section.getOptimizedTCPMode() == OPTIMIZE_NONE;
-  }
-  return abc;
-}
-
-function onDwell(seconds) {
-  if (seconds > 99999.999) {
-    warning(localize("Dwelling time is out of range."));
-  }
-  seconds = clamp(0.001, seconds, 99999.999);
-  writeBlock(gFeedModeModal.format(94), gFormat.format(4), "P" + milliFormat.format(seconds * 1000));
-}
-
-function onSpindleSpeed(spindleSpeed) {
-  writeBlock(sOutput.format(spindleSpeed));
-}
-
-function onCycle() {
-  writeBlock(gPlaneModal.format(17));
-}
-
-function getCommonCycle(x, y, z, r) {
-  forceXYZ(); // force xyz on first drill hole of any cycle
-  return [xOutput.format(x), yOutput.format(y),
-    zOutput.format(z),
-    "R" + xyzFormat.format(r)];
-}
-
-/** Convert approach to sign. */
-function approach(value) {
-  validate((value == "positive") || (value == "negative"), "Invalid approach.");
-  return (value == "positive") ? 1 : -1;
-}
-
-function setProbeAngleMethod() {
-  probeVariables.probeAngleMethod = (machineConfiguration.getNumberOfAxes() < 5 || is3D()) ? (getProperty("useG54x4") ? "G54.4" : "G68") : "UNSUPPORTED";
-  var axes = [machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW()];
-  for (var i = 0; i < axes.length; ++i) {
-    if (axes[i].isEnabled() && isSameDirection((axes[i].getAxis()).getAbsolute(), new Vector(0, 0, 1)) && axes[i].isTable()) {
-      probeVariables.probeAngleMethod = "AXIS_ROT";
-      break;
-    }
-  }
-  probeVariables.outputRotationCodes = true;
-}
-
-/** Output rotation offset based on angular probing cycle. */
-function setProbeAngle() {
-  if (probeVariables.outputRotationCodes) {
-    var probeOutputWorkOffset = currentSection.probeWorkOffset;
-    validate(probeOutputWorkOffset <= 6, "Angular Probing only supports work offsets 1-6.");
-    if (probeVariables.probeAngleMethod == "G68" && (Vector.diff(currentSection.getGlobalInitialToolAxis(), new Vector(0, 0, 1)).length > 1e-4)) {
-      error(localize("You cannot use multi axis toolpaths while G68 Rotation is in effect."));
-    }
-    var validateWorkOffset = false;
-    switch (probeVariables.probeAngleMethod) {
-    case "G54.4":
-      var param = 5801 + (probeOutputWorkOffset * 10);
-      writeBlock("#" + param + "=#135");
-      writeBlock("#" + (param + 1) + "=#136");
-      writeBlock("#" + (param + 5) + "=#144");
-      writeBlock(gFormat.format(54.4), "P" + probeOutputWorkOffset);
-      break;
-    case "G68":
-      gRotationModal.reset();
-      gAbsIncModal.reset();
-      var n = xyzFormat.format(0);
-      writeBlock(
-        gRotationModal.format(68), gAbsIncModal.format(90),
-        probeVariables.compensationXY, "Z" + n, "I" + n, "J" + n, "K" + xyzFormat.format(1), "R[#144]"
-      );
-      validateWorkOffset = true;
-      break;
-    case "AXIS_ROT":
-      var param = 5200 + probeOutputWorkOffset * 20 + 5;
-      writeBlock("#" + param + " = " + "[#" + param + " + #144]");
-      forceWorkPlane(); // force workplane to rotate ABC in order to apply rotation offsets
-      currentWorkOffset = undefined; // force WCS output to make use of updated parameters
-      validateWorkOffset = true;
-      break;
-    default:
-      error(localize("Angular Probing is not supported for this machine configuration."));
-      return;
-    }
-    if (validateWorkOffset) {
-      for (var i = currentSection.getId(); i < getNumberOfSections(); ++i) {
-        if (getSection(i).workOffset != currentSection.workOffset) {
-          error(localize("WCS offset cannot change while using angle rotation compensation."));
-          return;
-        }
-      }
-    }
-    probeVariables.outputRotationCodes = false;
-  }
-}
-
-function protectedProbeMove(_cycle, x, y, z) {
-  var _x = xOutput.format(x);
-  var _y = yOutput.format(y);
-  var _z = zOutput.format(z);
-  if (_z && z >= getCurrentPosition().z) {
-    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
-  }
-  if (_x || _y) {
-    writeBlock(gFormat.format(65), "P" + 9810, _x, _y, getFeed(highFeedrate)); // protected positioning move
-  }
-  if (_z && z < getCurrentPosition().z) {
-    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
-  }
-}
-
-function onCyclePoint(x, y, z) {
-  if (cycleType == "inspect") {
-    if (typeof inspectionCycleInspect == "function") {
-      inspectionCycleInspect(cycle, x, y, z);
-      return;
-    } else {
-      cycleNotSupported();
-    }
-  }
-  if (!isSameDirection(getRotation().forward, new Vector(0, 0, 1))) {
-    expandCyclePoint(x, y, z);
-    return;
-  }
-
-  if (isProbeOperation()) {
-    if (!useMultiAxisFeatures && !isSameDirection(currentSection.workPlane.forward, new Vector(0, 0, 1))) {
-      if (!allowIndexingWCSProbing && currentSection.strategy == "probe") {
-        error(localize("Updating WCS / work offset using probing is only supported by the CNC in the WCS frame."));
-        return;
-      }
-    }
-    if (printProbeResults()) {
-      writeProbingToolpathInformation(z - cycle.depth + tool.diameter / 2);
-      inspectionWriteCADTransform();
-      inspectionWriteWorkplaneTransform();
-      if (typeof inspectionWriteVariables == "function") {
-        inspectionVariables.pointNumber += 1;
-      }
-    }
-    protectedProbeMove(cycle, x, y, z);
-  }
-
-  gRetractModal.reset();
-  if (isFirstCyclePoint() || isProbeOperation()) {
-    if (!isProbeOperation()) {
-      repositionToCycleClearance(cycle, x, y, z);
-    }
-
-    // return to initial Z which is clearance plane and set absolute mode
-
-    var F = cycle.feedrate;
-    var P = !cycle.dwell ? 0 : clamp(1, cycle.dwell * 1000, 99999999); // in milliseconds
-
-    switch (cycleType) {
-    case "drilling": // use G82
-    case "counter-boring":
-      var d0 = cycle.retract - cycle.stock;
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(82),
-        getCommonCycle(x, y, z, cycle.retract),
-        conditional(P > 0, "P" + milliFormat.format(P)),
-        feedOutput.format(F),
-        conditional(d0 > 0, "D" + milliFormat.format(d0))
-      );
-      break;
-    case "chip-breaking":
-      if (cycle.accumulatedDepth < cycle.depth) {
-        expandCyclePoint(x, y, z);
-      } else {
-        var tz = cycle.incrementalDepth;
-        // var d0 = (cycle.chipBreakDistance != undefined) ? cycle.chipBreakDistance : machineParameters.chipBreakingDistance;
-        var k0 = cycle.retract - cycle.stock;
-        // d0 not supported
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(73),
-          getCommonCycle(x, y, z, cycle.retract),
-          "Q" + xyzFormat.format(tz),
-          conditional(P > 0, "P" + milliFormat.format(P)),
-          feedOutput.format(F),
-          // conditional(d0 > 0, "D" + xyzFormat.format(d0)), // use parameter F12
-          conditional(k0 > 0, "K" + xyzFormat.format(k0))
-        );
-      }
-      break;
-    case "deep-drilling":
-      var tz = cycle.incrementalDepth;
-      var k0 = cycle.retract - cycle.stock;
-      // d0 not supported
-      if (cycle.dwell > 0) { // not supported by cycle
-        expandCyclePoint(x, y, z);
-      } else {
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(83),
-          getCommonCycle(x, y, z, cycle.retract),
-          "Q" + xyzFormat.format(tz),
-          feedOutput.format(F),
-          conditional(k0 > 0, "K" + xyzFormat.format(k0))
-        );
-      }
-      break;
-    case "tapping":
-      if (getProperty("usePitchForTapping")) {
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
-          getCommonCycle(x, y, z, cycle.retract),
-          pitchOutput.format(tool.threadPitch)
-        );
-        forceFeed();
-      } else {
-        F = tool.getTappingFeedrate();
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format((tool.type == TOOL_TAP_LEFT_HAND) ? 74 : 84),
-          getCommonCycle(x, y, z, cycle.retract),
-          feedOutput.format(F)
-        );
-      }
-      break;
-    case "left-tapping":
-      if (getProperty("usePitchForTapping")) {
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
-          getCommonCycle(x, y, z, cycle.retract),
-          pitchOutput.format(tool.threadPitch)
-        );
-        forceFeed();
-      } else {
-        F = tool.getTappingFeedrate();
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(74),
-          getCommonCycle(x, y, z, cycle.retract),
-          feedOutput.format(F)
-        );
-      }
-      break;
-    case "right-tapping":
-      if (getProperty("usePitchForTapping")) {
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
-          getCommonCycle(x, y, z, cycle.retract),
-          pitchOutput.format(tool.threadPitch)
-        );
-        forceFeed();
-      } else {
-        F = tool.getTappingFeedrate();
-        writeBlock(
-          gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(84),
-          getCommonCycle(x, y, z, cycle.retract),
-          feedOutput.format(F)
-        );
-      }
-      break;
-    case "fine-boring":
-      // TAG: add support for counterclockwise direction
-      var d0 = cycle.retract - cycle.stock;
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(76),
-        getCommonCycle(x, y, z, cycle.retract),
-        conditional(P > 0, "P" + milliFormat.format(P)),
-        "Q" + xyzFormat.format(cycle.shift),
-        feedOutput.format(F),
-        conditional(d0 > 0, "D" + xyzFormat.format(d0))
-      );
-      break;
-    case "back-boring":
-      var dx = (gPlaneModal.getCurrent() == 19) ? cycle.backBoreDistance : 0;
-      var dy = (gPlaneModal.getCurrent() == 18) ? cycle.backBoreDistance : 0;
-      var dz = (gPlaneModal.getCurrent() == 17) ? cycle.backBoreDistance : 0;
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(87),
-        getCommonCycle(x - dx, y - dy, z - dz, cycle.bottom),
-        feedOutput.format(F),
-        conditional(P > 0, "P" + milliFormat.format(P)),
-        "Q" + xyzFormat.format(cycle.shift)
-      );
-      break;
-    case "reaming":
-      var d0 = cycle.retract - cycle.stock;
-      var f1 = cycle.retractFeedrate;
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(85),
-        getCommonCycle(x, y, z, cycle.retract),
-        feedOutput.format(F),
-        conditional(P > 0, "P" + milliFormat.format(P)),
-        conditional(f1 != F, "E" + feedFormat.format(f1)),
-        conditional(d0 > 0, "D" + xyzFormat.format(d0))
-      );
-      break;
-    case "stop-boring":
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(86),
-        getCommonCycle(x, y, z, cycle.retract),
-        feedOutput.format(F),
-        conditional(P > 0, "P" + milliFormat.format(P))
-      );
-      break;
-    case "manual-boring":
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(88),
-        getCommonCycle(x, y, z, cycle.retract),
-        feedOutput.format(F),
-        conditional(P > 0, "P" + milliFormat.format(P))
-      );
-      break;
-    case "boring":
-      writeBlock(
-        gRetractModal.format(98), gAbsIncModal.format(90), gCycleModal.format(89),
-        getCommonCycle(x, y, z, cycle.retract),
-        feedOutput.format(F),
-        conditional(P > 0, "P" + milliFormat.format(P))
-      );
-      break;
-    case "probing-x":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9811,
-        "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-y":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9811,
-        "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-z":
-      protectedProbeMove(cycle, x, y, Math.min(z - cycle.depth + cycle.probeClearance, cycle.retract));
-      writeBlock(
-        gFormat.format(65), "P" + 9811,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-x-wall":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "X" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-y-wall":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Y" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-x-channel":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "X" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        // not required "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-x-channel-with-island":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "X" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-y-channel":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Y" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        // not required "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-y-channel-with-island":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Y" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-boss":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9814,
-        "D" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-partial-boss":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9823,
-        "A" + xyzFormat.format(cycle.partialCircleAngleA),
-        "B" + xyzFormat.format(cycle.partialCircleAngleB),
-        "C" + xyzFormat.format(cycle.partialCircleAngleC),
-        "D" + xyzFormat.format(cycle.width1),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-hole":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9814,
-        "D" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        // not required "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-partial-hole":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9823,
-        "A" + xyzFormat.format(cycle.partialCircleAngleA),
-        "B" + xyzFormat.format(cycle.partialCircleAngleB),
-        "C" + xyzFormat.format(cycle.partialCircleAngleC),
-        "D" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-hole-with-island":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9814,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "D" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-circular-partial-hole-with-island":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9823,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "A" + xyzFormat.format(cycle.partialCircleAngleA),
-        "B" + xyzFormat.format(cycle.partialCircleAngleB),
-        "C" + xyzFormat.format(cycle.partialCircleAngleC),
-        "D" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-rectangular-hole":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "X" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        // not required "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Y" + xyzFormat.format(cycle.width2),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        // not required "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-rectangular-boss":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "X" + xyzFormat.format(cycle.width1),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Y" + xyzFormat.format(cycle.width2),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-rectangular-hole-with-island":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "X" + xyzFormat.format(cycle.width1),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      writeBlock(
-        gFormat.format(65), "P" + 9812,
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Y" + xyzFormat.format(cycle.width2),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(-cycle.probeClearance),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-inner-corner":
-      var cornerX = x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2);
-      var cornerY = y + approach(cycle.approach2) * (cycle.probeClearance + tool.diameter / 2);
-      var cornerI = 0;
-      var cornerJ = 0;
-      if (cycle.probeSpacing !== undefined) {
-        cornerI = cycle.probeSpacing;
-        cornerJ = cycle.probeSpacing;
-      }
-      if ((cornerI != 0) && (cornerJ != 0)) {
-        if (currentSection.strategy == "probe") {
-          setProbeAngleMethod();
-          probeVariables.compensationXY = "X[#135] Y[#136]";
-        }
-      }
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9815, xOutput.format(cornerX), yOutput.format(cornerY),
-        conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
-        conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-xy-outer-corner":
-      var cornerX = x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2);
-      var cornerY = y + approach(cycle.approach2) * (cycle.probeClearance + tool.diameter / 2);
-      var cornerI = 0;
-      var cornerJ = 0;
-      if (cycle.probeSpacing !== undefined) {
-        cornerI = cycle.probeSpacing;
-        cornerJ = cycle.probeSpacing;
-      }
-      if ((cornerI != 0) && (cornerJ != 0)) {
-        if (currentSection.strategy == "probe") {
-          setProbeAngleMethod();
-          probeVariables.compensationXY = "X[#135] Y[#136]";
-        }
-      }
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9816, xOutput.format(cornerX), yOutput.format(cornerY),
-        conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
-        conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, true)
-      );
-      break;
-    case "probing-x-plane-angle":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9843,
-        "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
-        "D" + xyzFormat.format(cycle.probeSpacing),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "A" + xyzFormat.format(cycle.nominalAngle != undefined ? cycle.nominalAngle : 90),
-        getProbingArguments(cycle, false)
-      );
-      if (currentSection.strategy == "probe") {
-        setProbeAngleMethod();
-        probeVariables.compensationXY = "X" + xyzFormat.format(0) + " Y" + xyzFormat.format(0);
-      }
-      break;
-    case "probing-y-plane-angle":
-      protectedProbeMove(cycle, x, y, z - cycle.depth);
-      writeBlock(
-        gFormat.format(65), "P" + 9843,
-        "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
-        "D" + xyzFormat.format(cycle.probeSpacing),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "A" + xyzFormat.format(cycle.nominalAngle != undefined ? cycle.nominalAngle : 0),
-        getProbingArguments(cycle, false)
-      );
-      if (currentSection.strategy == "probe") {
-        setProbeAngleMethod();
-        probeVariables.compensationXY = "X" + xyzFormat.format(0) + " Y" + xyzFormat.format(0);
-      }
-      break;
-    case "probing-xy-pcd-hole":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9819,
-        "A" + xyzFormat.format(cycle.pcdStartingAngle),
-        "B" + xyzFormat.format(cycle.numberOfSubfeatures),
-        "C" + xyzFormat.format(cycle.widthPCD),
-        "D" + xyzFormat.format(cycle.widthFeature),
-        "K" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        getProbingArguments(cycle, false)
-      );
-      if (cycle.updateToolWear) {
-        error(localize("Action -Update Tool Wear- is not supported with this cycle."));
-        return;
-      }
-      break;
-    case "probing-xy-pcd-boss":
-      protectedProbeMove(cycle, x, y, z);
-      writeBlock(
-        gFormat.format(65), "P" + 9819,
-        "A" + xyzFormat.format(cycle.pcdStartingAngle),
-        "B" + xyzFormat.format(cycle.numberOfSubfeatures),
-        "C" + xyzFormat.format(cycle.widthPCD),
-        "D" + xyzFormat.format(cycle.widthFeature),
-        "Z" + xyzFormat.format(z - cycle.depth),
-        "Q" + xyzFormat.format(cycle.probeOvertravel),
-        "R" + xyzFormat.format(cycle.probeClearance),
-        getProbingArguments(cycle, false)
-      );
-      if (cycle.updateToolWear) {
-        error(localize("Action -Update Tool Wear- is not supported with this cycle."));
-        return;
-      }
-      break;
-    default:
-      expandCyclePoint(x, y, z);
-    }
-  } else {
-    if (cycleExpanded) {
-      expandCyclePoint(x, y, z);
-    } else {
-      var _x = xOutput.format(x);
-      var _y = yOutput.format(y);
-      var _z = zOutput.format(z);
-      if (!_x && !_y && !_z) {
-        switch (gPlaneModal.getCurrent()) {
-        case 17: // XY
-          xOutput.reset(); // at least one axis is required
-          _x = xOutput.format(x);
-          break;
-        case 18: // ZX
-          zOutput.reset(); // at least one axis is required
-          _z = zOutput.format(z);
-          break;
-        case 19: // YZ
-          yOutput.reset(); // at least one axis is required
-          _y = yOutput.format(y);
-          break;
-        }
-      }
-      writeBlock(_x, _y, _z);
-    }
-  }
-}
-
-function getProbingArguments(cycle, updateWCS) {
-  var outputWCSCode = updateWCS && currentSection.strategy == "probe";
-  var probeOutputWorkOffset = currentSection.probeWorkOffset;
-  if (outputWCSCode) {
-    validate(probeOutputWorkOffset <= 99, "Work offset is out of range.");
-    var nextWorkOffset = hasNextSection() ? getNextSection().workOffset == 0 ? 1 : getNextSection().workOffset : -1;
-    if (probeOutputWorkOffset == nextWorkOffset) {
-      currentWorkOffset = undefined;
-    }
-  }
-  return [
-    (cycle.angleAskewAction == "stop-message" ? "B" + xyzFormat.format(cycle.toleranceAngle ? cycle.toleranceAngle : 0) : undefined),
-    ((cycle.updateToolWear && cycle.toolWearErrorCorrection < 100) ? "F" + xyzFormat.format(cycle.toolWearErrorCorrection ? cycle.toolWearErrorCorrection / 100 : 100) : undefined),
-    (cycle.wrongSizeAction == "stop-message" ? "H" + xyzFormat.format(cycle.toleranceSize ? cycle.toleranceSize : 0) : undefined),
-    (cycle.outOfPositionAction == "stop-message" ? "M" + xyzFormat.format(cycle.tolerancePosition ? cycle.tolerancePosition : 0) : undefined),
-    ((cycle.updateToolWear && cycleType == "probing-z") ? "T" + xyzFormat.format(cycle.toolLengthOffset) : undefined),
-    ((cycle.updateToolWear && cycleType !== "probing-z") ? "T" + xyzFormat.format(cycle.toolDiameterOffset) : undefined),
-    (cycle.updateToolWear ? "V" + xyzFormat.format(cycle.toolWearUpdateThreshold ? cycle.toolWearUpdateThreshold : 0) : undefined),
-    (cycle.printResults ? "W" + xyzFormat.format(1 + cycle.incrementComponent) : undefined), // 1 for advance feature, 2 for reset feature count and advance component number. first reported result in a program should use W2.
-    conditional(outputWCSCode, "S" + probeWCSFormat.format(probeOutputWorkOffset > 6 ? (probeOutputWorkOffset - 6 + 100) : probeOutputWorkOffset))
-  ];
-}
-
-function onCycleEnd() {
-  if (isProbeOperation()) {
-    zOutput.reset();
-    gMotionModal.reset();
-    writeBlock(gFormat.format(65), "P" + 9810, zOutput.format(cycle.retract)); // protected retract move
-  } else {
-    if (!cycleExpanded) {
-      writeBlock(gCycleModal.format(80));
-      gMotionModal.reset();
-    }
-  }
-}
-
-var pendingRadiusCompensation = -1;
-
-function onRadiusCompensation() {
-  pendingRadiusCompensation = radiusCompensation;
-}
-
-function onRapid(_x, _y, _z) {
-  var x = xOutput.format(_x);
-  var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
-  if (x || y || z) {
-    if (pendingRadiusCompensation >= 0) {
-      error(localize("Radius compensation mode cannot be changed at rapid traversal."));
-      return;
-    }
-    writeBlock(gMotionModal.format(0), x, y, z);
-    forceFeed();
-  }
-}
-
-function onLinear(_x, _y, _z, feed) {
-  var x = xOutput.format(_x);
-  var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
-  var f = getFeed(feed);
-  if (x || y || z) {
-    if (pendingRadiusCompensation >= 0) {
-      pendingRadiusCompensation = -1;
-      var d = tool.diameterOffset;
-      if (d > 512) {
-        warning(localize("The diameter offset exceeds the maximum value."));
-      }
-      writeBlock(gPlaneModal.format(17));
-      switch (radiusCompensation) {
-      case RADIUS_COMPENSATION_LEFT:
-        dOutput.reset();
-        writeBlock(gMotionModal.format(1), gFormat.format(41), x, y, z, dOutput.format(d), f);
-        break;
-      case RADIUS_COMPENSATION_RIGHT:
-        dOutput.reset();
-        writeBlock(gMotionModal.format(1), gFormat.format(42), x, y, z, dOutput.format(d), f);
-        break;
-      default:
-        writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
-      }
-    } else {
-      writeBlock(gMotionModal.format(1), x, y, z, f);
-    }
-  } else if (f) {
-    if (getNextRecord().isMotion()) { // try not to output feed without motion
-      forceFeed(); // force feed on next line
-    } else {
-      writeBlock(gMotionModal.format(1), f);
-    }
-  }
-}
-
-function onRapid5D(_x, _y, _z, _a, _b, _c) {
-  if (pendingRadiusCompensation >= 0) {
-    error(localize("Radius compensation mode cannot be changed at rapid traversal."));
-    return;
-  }
-  if (!currentSection.isOptimizedForMachine()) {
-    forceXYZ();
-  }
-  var x = xOutput.format(_x);
-  var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
-  var a = currentSection.isOptimizedForMachine() ? aOutput.format(_a) : "I" + ijkFormat.format(_a);
-  var b = currentSection.isOptimizedForMachine() ? bOutput.format(_b) : "J" + ijkFormat.format(_b);
-  var c = currentSection.isOptimizedForMachine() ? cOutput.format(_c) : "K" + ijkFormat.format(_c);
-
-  writeBlock(gMotionModal.format(0), x, y, z, a, b, c);
-  forceFeed();
-}
-
-function onLinear5D(_x, _y, _z, _a, _b, _c, feed, feedMode) {
-  if (pendingRadiusCompensation >= 0) {
-    error(localize("Radius compensation cannot be activated/deactivated for 5-axis move."));
-    return;
-  }
-  if (!currentSection.isOptimizedForMachine()) {
-    forceXYZ();
-  }
-  var x = xOutput.format(_x);
-  var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
-  var a = currentSection.isOptimizedForMachine() ? aOutput.format(_a) : "I" + ijkFormat.format(_a);
-  var b = currentSection.isOptimizedForMachine() ? bOutput.format(_b) : "J" + ijkFormat.format(_b);
-  var c = currentSection.isOptimizedForMachine() ? cOutput.format(_c) : "K" + ijkFormat.format(_c);
-  if (feedMode == FEED_INVERSE_TIME) {
-    forceFeed();
-  }
-  var f = feedMode == FEED_INVERSE_TIME ? inverseTimeOutput.format(feed) : getFeed(feed);
-  var fMode = feedMode == FEED_INVERSE_TIME ? 93 : 94;
-
-  if (x || y || z || a || b || c) {
-    writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), x, y, z, a, b, c, f);
-  } else if (f) {
-    if (getNextRecord().isMotion()) { // try not to output feed without motion
-      forceFeed(); // force feed on next line
-    } else {
-      writeBlock(gFeedModeModal.format(fMode), gMotionModal.format(1), f);
-    }
-  }
-}
-
-function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
-  if (isSpiral()) {
-    var startRadius = getCircularStartRadius();
-    var endRadius = getCircularRadius();
-    var dr = Math.abs(endRadius - startRadius);
-    if (dr > maximumCircularRadiiDifference) { // maximum limit
-      linearize(tolerance); // or alternatively use other G-codes for spiral motion
-      return;
-    }
-  }
-
-  if (pendingRadiusCompensation >= 0) {
-    error(localize("Radius compensation cannot be activated/deactivated for a circular move."));
-    return;
-  }
-
-  var start = getCurrentPosition();
-
-  if (isFullCircle()) {
-    if (getProperty("useRadius") || isHelical()) { // radius mode does not support full arcs
-      linearize(tolerance);
-      return;
-    }
-    switch (getCircularPlane()) {
-    case PLANE_XY:
-      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), getFeed(feed));
-      break;
-    case PLANE_ZX:
-      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
-      break;
-    case PLANE_YZ:
-      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), jOutput.format(cy - start.y, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
-      break;
-    default:
-      linearize(tolerance);
-    }
-  } else if (!getProperty("useRadius")) {
-    switch (getCircularPlane()) {
-    case PLANE_XY:
-      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), getFeed(feed));
-      break;
-    case PLANE_ZX:
-      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
-      break;
-    case PLANE_YZ:
-      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), jOutput.format(cy - start.y, 0), kOutput.format(cz - start.z, 0), getFeed(feed));
-      break;
-    default:
-      linearize(tolerance);
-    }
-  } else { // use radius mode
-    var r = getCircularRadius();
-    if (toDeg(getCircularSweep()) > (180 + 1e-9)) {
-      r = -r; // allow up to <360 deg arcs
-    }
-    switch (getCircularPlane()) {
-    case PLANE_XY:
-      writeBlock(gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
-      break;
-    case PLANE_ZX:
-      writeBlock(gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
-      break;
-    case PLANE_YZ:
-      writeBlock(gPlaneModal.format(19), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), getFeed(feed));
-      break;
-    default:
-      linearize(tolerance);
-    }
-  }
-}
-
-var currentCoolantMode = COOLANT_OFF;
-var coolantOff = undefined;
-var forceCoolant = false;
-
-function setCoolant(coolant) {
-  var coolantCodes = getCoolantCodes(coolant);
-  if (Array.isArray(coolantCodes)) {
-    if (singleLineCoolant) {
-      writeBlock(coolantCodes.join(getWordSeparator()));
-    } else {
-      for (var c in coolantCodes) {
-        writeBlock(coolantCodes[c]);
-      }
-    }
-    return undefined;
-  }
-  return coolantCodes;
-}
-
-function getCoolantCodes(coolant) {
-  var multipleCoolantBlocks = new Array(); // create a formatted array to be passed into the outputted line
-  if (!coolants) {
-    error(localize("Coolants have not been defined."));
-  }
-  if (tool.type == TOOL_PROBE) { // avoid coolant output for probing
-    coolant = COOLANT_OFF;
-  }
-  if (coolant == currentCoolantMode && (!forceCoolant || coolant == COOLANT_OFF)) {
-    return undefined; // coolant is already active
-  }
-  if ((coolant != COOLANT_OFF) && (currentCoolantMode != COOLANT_OFF) && (coolantOff != undefined) && !forceCoolant) {
-    if (Array.isArray(coolantOff)) {
-      for (var i in coolantOff) {
-        multipleCoolantBlocks.push(coolantOff[i]);
-      }
-    } else {
-      multipleCoolantBlocks.push(coolantOff);
-    }
-  }
-  forceCoolant = false;
-
-  var m;
-  var coolantCodes = {};
-  for (var c in coolants) { // find required coolant codes into the coolants array
-    if (coolants[c].id == coolant) {
-      coolantCodes.on = coolants[c].on;
-      if (coolants[c].off != undefined) {
-        coolantCodes.off = coolants[c].off;
-        break;
-      } else {
-        for (var i in coolants) {
-          if (coolants[i].id == COOLANT_OFF) {
-            coolantCodes.off = coolants[i].off;
-            break;
-          }
-        }
-      }
-    }
-  }
-  if (coolant == COOLANT_OFF) {
-    m = !coolantOff ? coolantCodes.off : coolantOff; // use the default coolant off command when an 'off' value is not specified
-  } else {
-    coolantOff = coolantCodes.off;
-    m = coolantCodes.on;
-  }
-
-  if (!m) {
-    onUnsupportedCoolant(coolant);
-    m = 9;
-  } else {
-    if (Array.isArray(m)) {
-      for (var i in m) {
-        multipleCoolantBlocks.push(m[i]);
-      }
-    } else {
-      multipleCoolantBlocks.push(m);
-    }
-    currentCoolantMode = coolant;
-    for (var i in multipleCoolantBlocks) {
-      if (typeof multipleCoolantBlocks[i] == "number") {
-        multipleCoolantBlocks[i] = mFormat.format(multipleCoolantBlocks[i]);
-      }
-    }
-    return multipleCoolantBlocks; // return the single formatted coolant value
-  }
-  return undefined;
-}
-
-var mapCommand = {
-  COMMAND_END                     : 2,
-  COMMAND_SPINDLE_CLOCKWISE       : 3,
-  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
-  COMMAND_STOP_SPINDLE            : 5,
-  COMMAND_ORIENTATE_SPINDLE       : 19,
-  COMMAND_LOAD_TOOL               : 6
-};
-
-function onCommand(command) {
-  switch (command) {
-  case COMMAND_STOP:
-    writeBlock(mFormat.format(0));
-    forceSpindleSpeed = true;
-    forceCoolant = true;
-    return;
-  case COMMAND_OPTIONAL_STOP:
-    writeBlock(mFormat.format(1));
-    forceSpindleSpeed = true;
-    forceCoolant = true;
-    return;
-  case COMMAND_COOLANT_ON:
-    setCoolant(COOLANT_FLOOD);
-    return;
-  case COMMAND_COOLANT_OFF:
-    setCoolant(COOLANT_OFF);
-    return;
-  case COMMAND_START_SPINDLE:
-    onCommand(tool.clockwise ? COMMAND_SPINDLE_CLOCKWISE : COMMAND_SPINDLE_COUNTERCLOCKWISE);
-    return;
-  case COMMAND_LOCK_MULTI_AXIS:
-    if (machineConfiguration.isMultiAxisConfiguration() && (machineConfiguration.getNumberOfAxes() >= 4)) {
-      writeBlock(mClampModal.format(44)); // lock 4th-axis motion
-      if (machineConfiguration.getNumberOfAxes() == 5) {
-        writeBlock(mClampModal.format(47)); // lock 5th-axis motion
-      }
-    }
-    return;
-  case COMMAND_UNLOCK_MULTI_AXIS:
-    var outputClampCodes = getProperty("useClampCodes") || currentSection.isMultiAxis();
-    if (outputClampCodes && machineConfiguration.isMultiAxisConfiguration() && (machineConfiguration.getNumberOfAxes() >= 4)) {
-      writeBlock(mClampModal.format(43)); // unlock 4th-axis motion
-      if (machineConfiguration.getNumberOfAxes() == 5) {
-        writeBlock(mClampModal.format(46)); // unlock 5th-axis motion
-      }
-    }
-    return;
-  case COMMAND_START_CHIP_TRANSPORT:
-    return;
-  case COMMAND_STOP_CHIP_TRANSPORT:
-    return;
-  case COMMAND_BREAK_CONTROL:
-    return;
-  case COMMAND_TOOL_MEASURE:
-    return;
-  case COMMAND_PROBE_ON:
-    return;
-  case COMMAND_PROBE_OFF:
-    return;
-  }
-
-  var stringId = getCommandStringId(command);
-  var mcode = mapCommand[stringId];
-  if (mcode != undefined) {
-    writeBlock(mFormat.format(mcode));
-  } else {
-    onUnsupportedCommand(command);
-  }
-}
-
-function onSectionEnd() {
-  if (typeof inspectionProcessSectionEnd == "function") {
-    inspectionProcessSectionEnd();
-  }
-
-  if (currentSection.isMultiAxis()) {
-    writeBlock(gFeedModeModal.format(94)); // inverse time feed off
-  }
-
-  writeBlock(gPlaneModal.format(17));
-  if (!isLastSection() && (getNextSection().getTool().coolant != tool.coolant)) {
-    setCoolant(COOLANT_OFF);
-  }
-  if (((getCurrentSectionId() + 1) >= getNumberOfSections()) ||
-      (tool.number != getNextSection().getTool().number)) {
-    onCommand(COMMAND_BREAK_CONTROL);
-  }
-
-  if (isProbeOperation()) {
-    writeBlock(gFormat.format(65), "P" + 9833); // spin the probe off
-    if (probeVariables.probeAngleMethod != "G68") {
-      setProbeAngle(); // output probe angle rotations if required
-    }
-  }
-  forceAny();
-}
-
-/** Output block to do safe retract and/or move to home position. */
+// <<<<< INCLUDED FROM include_files/parametricFeeds.cpi
+// >>>>> INCLUDED FROM include_files/writeRetract_fanuc.cpi
+validate(settings.retract, "Setting 'retract' is required but not defined.");
 function writeRetract() {
   var words = []; // store all retracted axes in an array
   var retractAxes = new Array(false, false, false);
@@ -2454,12 +2029,15 @@ function writeRetract() {
     return;
   }
   // special conditions
-  /*
-  if (retractAxes[2]) { // Z doesn't use G53
-    method = "G28";
+  if (settings.retract.methodXY != undefined &&
+    (retractAxes[0] && !machineConfiguration.hasHomePositionX() || (retractAxes[1] && !machineConfiguration.hasHomePositionY()))) {
+    method = settings.retract.methodXY;
   }
-  */
-  if (gRotationModal.getCurrent() == 68) { // cancel G68 before retracting
+  if (retractAxes[2] && settings.retract.methodZ != undefined) {
+    method = settings.retract.methodZ;
+  }
+
+  if (typeof gRotationModal != "undefined" && gRotationModal.getCurrent() == 68 && settings.retract.cancelRotationOnRetracting) { // cancel rotation before retracting
     cancelWorkPlane(true);
   }
 
@@ -2489,7 +2067,7 @@ function writeRetract() {
     case Z:
       words.push("Z" + xyzFormat.format(_zHome));
       zOutput.reset();
-      retracted = true;
+      retracted = (typeof skipBlocks == "undefined") ? true : !skipBlocks;
       break;
     default:
       error(localize("Unsupported axis specified for writeRetract()."));
@@ -2509,12 +2087,232 @@ function writeRetract() {
       writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), words);
       break;
     default:
-      error(localize("Unsupported safe position method."));
+      error(localize("Unsupported safe position method." + method));
       return;
     }
   }
 }
+// <<<<< INCLUDED FROM include_files/writeRetract_fanuc.cpi
+// >>>>> INCLUDED FROM include_files/initialPositioning_fanuc.cpi
+Matrix.getOrientationFromDirection = function (ijk) {
+  var forward = ijk;
+  var unitZ = new Vector(0, 0, 1);
+  var W;
+  if (Math.abs(Vector.dot(forward, unitZ)) < 0.5) {
+    var imX = Vector.cross(forward, unitZ).getNormalized();
+    W = new Matrix(imX, Vector.cross(forward, imX), forward);
+  } else {
+    var imX = Vector.cross(new Vector(0, 1, 0), forward).getNormalized();
+    W = new Matrix(imX, Vector.cross(forward, imX), forward);
+  }
+  return W;
+};
 
+function writeInitialPositioning(position, abc, fullPositioning) {
+  gMotionModal.reset();
+  if (fullPositioning) {
+    if (false && currentSection.isMultiAxis() && settings.workPlaneMethod.useTiltedWorkplane) {
+      var W;
+      if (machineConfiguration.isMultiAxisConfiguration()) {
+        W = machineConfiguration.getOrientation(abc);
+      } else {
+        W = Matrix.getOrientationFromDirection(currentSection.getGlobalInitialToolAxis());
+      }
+      var angles = settings.workPlaneMethod.eulerConvention != undefined ? W.getEuler2(settings.workPlaneMethod.eulerConvention) : abc;
+      if (angles.isNonZero()) {
+        setWorkPlane(angles);
+        var prePosition = W.getTransposed().multiply(position);
+        writeBlock(gAbsIncModal.format(90), gPlaneModal.format(17), gMotionModal.format(0), xOutput.format(prePosition.x), yOutput.format(prePosition.y));
+        cancelWorkPlane();
+        writeBlock(gMotionModal.format(0), gFormat.format(getOffsetCode()), zOutput.format(position.z), hFormat.format(tool.lengthOffset));
+        lengthCompensationActive = true;
+      }
+    } else {
+      if (machineConfiguration.isHeadConfiguration()) {
+        writeBlock(gAbsIncModal.format(90), gPlaneModal.format(17), gMotionModal.format(0), gFormat.format(getOffsetCode()),
+          xOutput.format(position.x), yOutput.format(position.y), zOutput.format(position.z), hFormat.format(tool.lengthOffset)
+        );
+      } else {
+        writeBlock(gAbsIncModal.format(90), gPlaneModal.format(17), gMotionModal.format(0), xOutput.format(position.x), yOutput.format(position.y));
+        writeBlock(gMotionModal.format(0), gFormat.format(getOffsetCode()), zOutput.format(position.z), hFormat.format(tool.lengthOffset));
+      }
+      lengthCompensationActive = true;
+      gMotionModal.reset();
+    }
+  } else { // simple positioning
+    if (getCurrentPosition().z < position.z) {
+      zOutput.reset();
+      validate(lengthCompensationActive, "Tool length compensation is not active."); // make sure that lenght compensation is enabled
+      writeBlock(gMotionModal.format(0), zOutput.format(position.z));
+    }
+    forceXYZ();
+    writeBlock(gAbsIncModal.format(90), gPlaneModal.format(17), gMotionModal.format(0), xOutput.format(position.x), yOutput.format(position.y));
+  }
+}
+// <<<<< INCLUDED FROM include_files/initialPositioning_fanuc.cpi
+// >>>>> INCLUDED FROM include_files/getOffsetCode_fanuc.cpi
+function getOffsetCode() {
+  // assumes a head configuration uses TCP on a Fanuc controller
+  var offsetCode = 43;
+  if (currentSection.isMultiAxis()) {
+    if (machineConfiguration.isMultiAxisConfiguration() && operationSupportsTCP) {
+      offsetCode = 43.4;
+    } else if (!machineConfiguration.isMultiAxisConfiguration()) {
+      offsetCode = 43.5;
+    }
+  }
+  return offsetCode;
+}
+// <<<<< INCLUDED FROM include_files/getOffsetCode_fanuc.cpi
+// >>>>> INCLUDED FROM include_files/smoothing.cpi
+// collected state below, do not edit
+validate(settings.smoothing, "Setting 'smoothing' is required but not defined.");
+var smoothing = {
+  cancel     : false, // cancel tool length prior to update smoothing for this operation
+  isActive   : false, // the current state of smoothing
+  isAllowed  : false, // smoothing is allowed for this operation
+  isDifferent: false, // tells if smoothing levels/tolerances/both are different between operations
+  level      : -1, // the active level of smoothing
+  tolerance  : -1, // the current operation tolerance
+  force      : false // smoothing needs to be forced out in this operation
+};
+
+function initializeSmoothing() {
+  var smoothingSettings = settings.smoothing;
+  var previousLevel = smoothing.level;
+  var previousTolerance = smoothing.tolerance;
+
+  // determine new smoothing levels and tolerances
+  smoothing.level = parseInt(getProperty("useSmoothing"), 10);
+  smoothing.level = isNaN(smoothing.level) ? -1 : smoothing.level;
+  smoothing.tolerance = Math.max(getParameter("operation:tolerance", smoothingSettings.thresholdFinishing), 0);
+
+  // automatically determine smoothing level
+  if (smoothing.level == 9999) {
+    if (smoothingSettings.autoLevelCriteria == "stock") { // determine auto smoothing level based on stockToLeave
+      var stockToLeave = xyzFormat.getResultingValue(getParameter("operation:stockToLeave", 0));
+      var verticalStockToLeave = xyzFormat.getResultingValue(getParameter("operation:verticalStockToLeave", 0));
+      if (((stockToLeave >= smoothingSettings.thresholdRoughing) && (verticalStockToLeave >= smoothingSettings.thresholdRoughing)) ||
+          getParameter("operation:strategy", "") == "face") {
+        smoothing.level = smoothingSettings.roughing; // set roughing level
+      } else {
+        if (((stockToLeave >= smoothingSettings.thresholdSemiFinishing) && (stockToLeave < smoothingSettings.thresholdRoughing)) &&
+          ((verticalStockToLeave >= smoothingSettings.thresholdSemiFinishing) && (verticalStockToLeave  < smoothingSettings.thresholdRoughing))) {
+          smoothing.level = smoothingSettings.semi; // set semi level
+        } else if (((stockToLeave >= smoothingSettings.thresholdFinishing) && (stockToLeave < smoothingSettings.thresholdSemiFinishing)) &&
+          ((verticalStockToLeave >= smoothingSettings.thresholdFinishing) && (verticalStockToLeave  < smoothingSettings.thresholdSemiFinishing))) {
+          smoothing.level = smoothingSettings.semifinishing; // set semi-finishing level
+        } else {
+          smoothing.level = smoothingSettings.finishing; // set finishing level
+        }
+      }
+    } else { // detemine auto smoothing level based on operation tolerance instead of stockToLeave
+      if (smoothing.tolerance >= smoothingSettings.thresholdRoughing ||
+          getParameter("operation:strategy", "") == "face") {
+        smoothing.level = smoothingSettings.roughing; // set roughing level
+      } else {
+        if (((smoothing.tolerance >= smoothingSettings.thresholdSemiFinishing) && (smoothing.tolerance < smoothingSettings.thresholdRoughing))) {
+          smoothing.level = smoothingSettings.semi; // set semi level
+        } else if (((smoothing.tolerance >= smoothingSettings.thresholdFinishing) && (smoothing.tolerance < smoothingSettings.thresholdSemiFinishing))) {
+          smoothing.level = smoothingSettings.semifinishing; // set semi-finishing level
+        } else {
+          smoothing.level = smoothingSettings.finishing; // set finishing level
+        }
+      }
+    }
+  }
+
+  if (smoothing.level == -1) { // useSmoothing is disabled
+    smoothing.isAllowed = false;
+  } else { // do not output smoothing for the following operations
+    smoothing.isAllowed = !(currentSection.getTool().type == TOOL_PROBE || currentSection.checkGroup(STRATEGY_DRILLING));
+  }
+  if (!smoothing.isAllowed) {
+    smoothing.level = -1;
+    smoothing.tolerance = -1;
+  }
+
+  switch (smoothingSettings.differenceCriteria) {
+  case "level":
+    smoothing.isDifferent = smoothing.level != previousLevel;
+    break;
+  case "tolerance":
+    smoothing.isDifferent = smoothing.tolerance != previousTolerance;
+    break;
+  case "both":
+    smoothing.isDifferent = smoothing.level != previousLevel || smoothing.tolerance != previousTolerance;
+    break;
+  default:
+    error(localize("Unsupported smoothing criteria."));
+    return;
+  }
+
+  // tool length compensation needs to be canceled when smoothing state/level changes
+  if (smoothingSettings.cancelCompensation) {
+    smoothing.cancel = !isFirstSection() && smoothing.isDifferent;
+  }
+}
+// <<<<< INCLUDED FROM include_files/smoothing.cpi
+// >>>>> INCLUDED FROM include_files/writeProgramHeader.cpi
+function writeProgramHeader() {
+  // dump machine configuration
+  var vendor = machineConfiguration.getVendor();
+  var model = machineConfiguration.getModel();
+  var mDescription = machineConfiguration.getDescription();
+  if (getProperty("writeMachine") && (vendor || model || mDescription)) {
+    writeComment(localize("Machine"));
+    if (vendor) {
+      writeComment("  " + localize("vendor") + ": " + vendor);
+    }
+    if (model) {
+      writeComment("  " + localize("model") + ": " + model);
+    }
+    if (mDescription) {
+      writeComment("  " + localize("description") + ": "  + mDescription);
+    }
+  }
+
+  // dump tool information
+  if (getProperty("writeTools")) {
+    if (false) { // set to true to use the post kernel version of the tool list
+      writeToolTable(TOOL_NUMBER_COL);
+    } else {
+      var zRanges = {};
+      if (is3D()) {
+        var numberOfSections = getNumberOfSections();
+        for (var i = 0; i < numberOfSections; ++i) {
+          var section = getSection(i);
+          var zRange = section.getGlobalZRange();
+          var tool = section.getTool();
+          if (zRanges[tool.number]) {
+            zRanges[tool.number].expandToRange(zRange);
+          } else {
+            zRanges[tool.number] = zRange;
+          }
+        }
+      }
+      var tools = getToolTable();
+      if (tools.getNumberOfTools() > 0) {
+        for (var i = 0; i < tools.getNumberOfTools(); ++i) {
+          var tool = tools.getTool(i);
+          var comment = "T" + toolFormat.format(tool.number) + " " +
+          "D=" + xyzFormat.format(tool.diameter) + " " +
+          localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
+          if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
+            comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
+          }
+          if (zRanges[tool.number]) {
+            comment += " - " + localize("ZMIN") + "=" + xyzFormat.format(zRanges[tool.number].getMinimum());
+          }
+          comment += " - " + getToolTypeName(tool.type);
+          writeComment(comment);
+        }
+      }
+    }
+  }
+}
+// <<<<< INCLUDED FROM include_files/writeProgramHeader.cpi
+// >>>>> INCLUDED FROM include_files/commonInspectionFunctions_fanuc.cpi
 var isDPRNTopen = false;
 function inspectionCreateResultsFileHeader() {
   if (isDPRNTopen) {
@@ -2542,13 +2340,14 @@ function inspectionCreateResultsFileHeader() {
     resFile = resFile.replace(/:/g, "-");
     resFile = resFile.replace(/[^a-zA-Z0-9 -]/g, "");
     resFile = resFile.replace(/\s/g, "-");
+    resFile = resFile.toUpperCase();
     writeln("DPRNT[START]");
     writeln("DPRNT[RESULTSFILE*" + resFile + "]");
     if (hasGlobalParameter("document-id")) {
-      writeln("DPRNT[DOCUMENTID*" + getGlobalParameter("document-id") + "]");
+      writeln("DPRNT[DOCUMENTID*" + getGlobalParameter("document-id").toUpperCase() + "]");
     }
     if (hasGlobalParameter("model-version")) {
-      writeln("DPRNT[MODELVERSION*" + getGlobalParameter("model-version") + "]");
+      writeln("DPRNT[MODELVERSION*" + getGlobalParameter("model-version").toUpperCase() + "]");
     }
   }
   if (isProbeOperation() && printProbeResults()) {
@@ -2596,95 +2395,433 @@ function inspectionWriteWorkplaneTransform() {
 function writeProbingToolpathInformation(cycleDepth) {
   writeln("DPRNT[TOOLPATHID*" + getParameter("autodeskcam:operation-id") + "]");
   if (isInspectionOperation()) {
-    writeln("DPRNT[TOOLPATH*" + getParameter("operation-comment") + "]");
+    writeln("DPRNT[TOOLPATH*" + getParameter("operation-comment").toUpperCase().replace(/[()]/g, "") + "]");
   } else {
     writeln("DPRNT[CYCLEDEPTH*" + xyzFormat.format(cycleDepth) + "]");
   }
 }
+// <<<<< INCLUDED FROM include_files/commonInspectionFunctions_fanuc.cpi
+// >>>>> INCLUDED FROM include_files/probeCycles_renishaw.cpi
+validate(settings.probing, "Setting 'probing' is required but not defined.");
+var probeVariables = {
+  outputRotationCodes: false, // determines if it is required to output rotation codes
+  compensationXY     : undefined
+};
+function writeProbeCycle(cycle, x, y, z, P, F) {
+  if (isProbeOperation()) {
+    if (!settings.workPlaneMethod.useTiltedWorkplane && !isSameDirection(currentSection.workPlane.forward, new Vector(0, 0, 1))) {
+      if (!settings.probing.allowIndexingWCSProbing && currentSection.strategy == "probe") {
+        error(localize("Updating WCS / work offset using probing is only supported by the CNC in the WCS frame."));
+        return;
+      }
+    }
+    if (printProbeResults()) {
+      writeProbingToolpathInformation(z - cycle.depth + tool.diameter / 2);
+      inspectionWriteCADTransform();
+      inspectionWriteWorkplaneTransform();
+      if (typeof inspectionWriteVariables == "function") {
+        inspectionVariables.pointNumber += 1;
+      }
+    }
+    protectedProbeMove(cycle, x, y, z);
+  }
 
-// Start of onRewindMachine logic
-/** Allow user to override the onRewind logic. */
-function onRewindMachineEntry(_a, _b, _c) {
-  return false;
-}
+  switch (cycleType) {
+  case "probing-x":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9811,
+      "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-y":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9811,
+      "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-z":
+    protectedProbeMove(cycle, x, y, Math.min(z - cycle.depth + cycle.probeClearance, cycle.retract));
+    writeBlock(
+      gFormat.format(65), "P" + 9811,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-x-wall":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "X" + xyzFormat.format(cycle.width1),
+      zOutput.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-y-wall":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Y" + xyzFormat.format(cycle.width1),
+      zOutput.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-x-channel":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "X" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      // not required "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-x-channel-with-island":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "X" + xyzFormat.format(cycle.width1),
+      zOutput.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-y-channel":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Y" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      // not required "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-y-channel-with-island":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Y" + xyzFormat.format(cycle.width1),
+      zOutput.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-boss":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9814,
+      "D" + xyzFormat.format(cycle.width1),
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-partial-boss":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9823,
+      "A" + xyzFormat.format(cycle.partialCircleAngleA),
+      "B" + xyzFormat.format(cycle.partialCircleAngleB),
+      "C" + xyzFormat.format(cycle.partialCircleAngleC),
+      "D" + xyzFormat.format(cycle.width1),
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-hole":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9814,
+      "D" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      // not required "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-partial-hole":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9823,
+      "A" + xyzFormat.format(cycle.partialCircleAngleA),
+      "B" + xyzFormat.format(cycle.partialCircleAngleB),
+      "C" + xyzFormat.format(cycle.partialCircleAngleC),
+      "D" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-hole-with-island":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9814,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "D" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-circular-partial-hole-with-island":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9823,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "A" + xyzFormat.format(cycle.partialCircleAngleA),
+      "B" + xyzFormat.format(cycle.partialCircleAngleB),
+      "C" + xyzFormat.format(cycle.partialCircleAngleC),
+      "D" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-rectangular-hole":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "X" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      // not required "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Y" + xyzFormat.format(cycle.width2),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      // not required "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-rectangular-boss":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "X" + xyzFormat.format(cycle.width1),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Y" + xyzFormat.format(cycle.width2),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-rectangular-hole-with-island":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "X" + xyzFormat.format(cycle.width1),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    writeBlock(
+      gFormat.format(65), "P" + 9812,
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Y" + xyzFormat.format(cycle.width2),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(-cycle.probeClearance),
+      getProbingArguments(cycle, true)
+    );
+    break;
 
-/** Retract to safe position before indexing rotaries. */
-function onMoveToSafeRetractPosition() {
-  writeRetract(Z);
-  // cancel TCP so that tool doesn't follow rotaries
-  if (currentSection.isMultiAxis() && operationSupportsTCP) {
-    disableLengthCompensation(false, "TCPC OFF");
+  case "probing-xy-inner-corner":
+    var cornerX = x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2);
+    var cornerY = y + approach(cycle.approach2) * (cycle.probeClearance + tool.diameter / 2);
+    var cornerI = 0;
+    var cornerJ = 0;
+    if (cycle.probeSpacing !== undefined) {
+      cornerI = cycle.probeSpacing;
+      cornerJ = cycle.probeSpacing;
+    }
+    if ((cornerI != 0) && (cornerJ != 0)) {
+      if (currentSection.strategy == "probe") {
+        setProbeAngleMethod();
+        probeVariables.compensationXY = "X[#135] Y[#136]";
+      }
+    }
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9815, xOutput.format(cornerX), yOutput.format(cornerY),
+      conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
+      conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-xy-outer-corner":
+    var cornerX = x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2);
+    var cornerY = y + approach(cycle.approach2) * (cycle.probeClearance + tool.diameter / 2);
+    var cornerI = 0;
+    var cornerJ = 0;
+    if (cycle.probeSpacing !== undefined) {
+      cornerI = cycle.probeSpacing;
+      cornerJ = cycle.probeSpacing;
+    }
+    if ((cornerI != 0) && (cornerJ != 0)) {
+      if (currentSection.strategy == "probe") {
+        setProbeAngleMethod();
+        probeVariables.compensationXY = "X[#135] Y[#136]";
+      }
+    }
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9816, xOutput.format(cornerX), yOutput.format(cornerY),
+      conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
+      conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, true)
+    );
+    break;
+  case "probing-x-plane-angle":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9843,
+      "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
+      "D" + xyzFormat.format(cycle.probeSpacing),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "A" + xyzFormat.format(cycle.nominalAngle != undefined ? cycle.nominalAngle : 90),
+      getProbingArguments(cycle, false)
+    );
+    if (currentSection.strategy == "probe") {
+      setProbeAngleMethod();
+      probeVariables.compensationXY = "X" + xyzFormat.format(0) + " Y" + xyzFormat.format(0);
+    }
+    break;
+  case "probing-y-plane-angle":
+    protectedProbeMove(cycle, x, y, z - cycle.depth);
+    writeBlock(
+      gFormat.format(65), "P" + 9843,
+      "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
+      "D" + xyzFormat.format(cycle.probeSpacing),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "A" + xyzFormat.format(cycle.nominalAngle != undefined ? cycle.nominalAngle : 0),
+      getProbingArguments(cycle, false)
+    );
+    if (currentSection.strategy == "probe") {
+      setProbeAngleMethod();
+      probeVariables.compensationXY = "X" + xyzFormat.format(0) + " Y" + xyzFormat.format(0);
+    }
+    break;
+  case "probing-xy-pcd-hole":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9819,
+      "A" + xyzFormat.format(cycle.pcdStartingAngle),
+      "B" + xyzFormat.format(cycle.numberOfSubfeatures),
+      "C" + xyzFormat.format(cycle.widthPCD),
+      "D" + xyzFormat.format(cycle.widthFeature),
+      "K" + xyzFormat.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      getProbingArguments(cycle, false)
+    );
+    if (cycle.updateToolWear) {
+      error(localize("Action -Update Tool Wear- is not supported with this cycle."));
+      return;
+    }
+    break;
+  case "probing-xy-pcd-boss":
+    protectedProbeMove(cycle, x, y, z);
+    writeBlock(
+      gFormat.format(65), "P" + 9819,
+      "A" + xyzFormat.format(cycle.pcdStartingAngle),
+      "B" + xyzFormat.format(cycle.numberOfSubfeatures),
+      "C" + xyzFormat.format(cycle.widthPCD),
+      "D" + xyzFormat.format(cycle.widthFeature),
+      "Z" + xyzFormat.format(z - cycle.depth),
+      "Q" + xyzFormat.format(cycle.probeOvertravel),
+      "R" + xyzFormat.format(cycle.probeClearance),
+      getProbingArguments(cycle, false)
+    );
+    if (cycle.updateToolWear) {
+      error(localize("Action -Update Tool Wear- is not supported with this cycle."));
+      return;
+    }
+    break;
   }
 }
 
-/** Rotate axes to new position above reentry position */
-function onRotateAxes(_x, _y, _z, _a, _b, _c) {
-  // position rotary axes
-  xOutput.disable();
-  yOutput.disable();
-  zOutput.disable();
-  invokeOnRapid5D(_x, _y, _z, _a, _b, _c);
-  setCurrentABC(new Vector(_a, _b, _c));
-  xOutput.enable();
-  yOutput.enable();
-  zOutput.enable();
+function printProbeResults() {
+  return currentSection.getParameter("printResults", 0) == 1;
 }
 
-/** Return from safe position after indexing rotaries. */
-function onReturnFromSafeRetractPosition(_x, _y, _z) {
-  // reinstate TCP / tool length compensation
-  if (!lengthCompensationActive) {
-    writeBlock(gFormat.format(getOffsetCode()), hFormat.format(tool.lengthOffset));
-    lengthCompensationActive = true;
-  }
-
-  // position in XY
-  forceXYZ();
-  xOutput.reset();
-  yOutput.reset();
-  zOutput.disable();
-  invokeOnRapid(_x, _y, _z);
-
-  // position in Z
-  zOutput.enable();
-  invokeOnRapid(_x, _y, _z);
+/** Convert approach to sign. */
+function approach(value) {
+  validate((value == "positive") || (value == "negative"), "Invalid approach.");
+  return (value == "positive") ? 1 : -1;
 }
-// End of onRewindMachine logic
-
-function onClose() {
-  if (isDPRNTopen) {
-    writeln("DPRNT[END]");
-    writeBlock("PCLOS");
-    isDPRNTopen = false;
-    if (typeof inspectionProcessSectionEnd == "function") {
-      inspectionProcessSectionEnd();
+// <<<<< INCLUDED FROM include_files/probeCycles_renishaw.cpi
+// >>>>> INCLUDED FROM include_files/getProbingArguments_renishaw.cpi
+function getProbingArguments(cycle, updateWCS) {
+  var outputWCSCode = updateWCS && currentSection.strategy == "probe";
+  var probeOutputWorkOffset = currentSection.probeWorkOffset;
+  if (outputWCSCode) {
+    validate(probeOutputWorkOffset <= 99, "Work offset is out of range.");
+    var nextWorkOffset = hasNextSection() ? getNextSection().workOffset == 0 ? 1 : getNextSection().workOffset : -1;
+    if (probeOutputWorkOffset == nextWorkOffset) {
+      currentWorkOffset = undefined;
     }
   }
-
-  if (probeVariables.probeAngleMethod == "G68") {
-    cancelWorkPlane();
-  }
-  writeln("");
-
-  onCommand(COMMAND_STOP_SPINDLE);
-  onCommand(COMMAND_COOLANT_OFF);
-
-  writeRetract(Z);
-  disableLengthCompensation(true);
-
-  setSmoothing(false);
-
-  setWorkPlane(new Vector(0, 0, 0)); // reset working plane
-
-  if (probeVariables.probeAngleMethod == "G54.4") {
-    writeBlock(gFormat.format(54.4), "P0");
-  }
-
-  onImpliedCommand(COMMAND_END);
-  onImpliedCommand(COMMAND_STOP_SPINDLE);
-  writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
+  return [
+    (cycle.angleAskewAction == "stop-message" ? "B" + xyzFormat.format(cycle.toleranceAngle ? cycle.toleranceAngle : 0) : undefined),
+    ((cycle.updateToolWear && cycle.toolWearErrorCorrection < 100) ? "F" + xyzFormat.format(cycle.toolWearErrorCorrection ? cycle.toolWearErrorCorrection / 100 : 100) : undefined),
+    (cycle.wrongSizeAction == "stop-message" ? "H" + xyzFormat.format(cycle.toleranceSize ? cycle.toleranceSize : 0) : undefined),
+    (cycle.outOfPositionAction == "stop-message" ? "M" + xyzFormat.format(cycle.tolerancePosition ? cycle.tolerancePosition : 0) : undefined),
+    ((cycle.updateToolWear && cycleType == "probing-z") ? "T" + xyzFormat.format(cycle.toolLengthOffset) : undefined),
+    ((cycle.updateToolWear && cycleType !== "probing-z") ? "T" + xyzFormat.format(cycle.toolDiameterOffset) : undefined),
+    (cycle.updateToolWear ? "V" + xyzFormat.format(cycle.toolWearUpdateThreshold ? cycle.toolWearUpdateThreshold : 0) : undefined),
+    (cycle.printResults ? "W" + xyzFormat.format(1 + cycle.incrementComponent) : undefined), // 1 for advance feature, 2 for reset feature count and advance component number. first reported result in a program should use W2.
+    conditional(outputWCSCode, "S" + probeWCSFormat.format(probeOutputWorkOffset > 6 ? (probeOutputWorkOffset - 6 + 100) : probeOutputWorkOffset))
+  ];
 }
-
-function setProperty(property, value) {
-  properties[property].current = value;
+// <<<<< INCLUDED FROM include_files/getProbingArguments_renishaw.cpi
+// >>>>> INCLUDED FROM include_files/protectedProbeMove_renishaw.cpi
+function protectedProbeMove(_cycle, x, y, z) {
+  var _x = xOutput.format(x);
+  var _y = yOutput.format(y);
+  var _z = zOutput.format(z);
+  if (_z && z >= getCurrentPosition().z) {
+    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
+  }
+  if (_x || _y) {
+    writeBlock(gFormat.format(65), "P" + 9810, _x, _y, getFeed(highFeedrate)); // protected positioning move
+  }
+  if (_z && z < getCurrentPosition().z) {
+    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
+  }
 }
+// <<<<< INCLUDED FROM include_files/protectedProbeMove_renishaw.cpi
+// >>>>> INCLUDED FROM include_files/setProbeAngleMethod.cpi
+function setProbeAngleMethod() {
+  settings.probing.probeAngleMethod = (machineConfiguration.getNumberOfAxes() < 5 || is3D()) ? (getProperty("useG54x4") ? "G54.4" : "G68") : "UNSUPPORTED";
+  var axes = [machineConfiguration.getAxisU(), machineConfiguration.getAxisV(), machineConfiguration.getAxisW()];
+  for (var i = 0; i < axes.length; ++i) {
+    if (axes[i].isEnabled() && isSameDirection((axes[i].getAxis()).getAbsolute(), new Vector(0, 0, 1)) && axes[i].isTable()) {
+      settings.probing.probeAngleMethod = "AXIS_ROT";
+      break;
+    }
+  }
+  probeVariables.outputRotationCodes = true;
+}
+// <<<<< INCLUDED FROM include_files/setProbeAngleMethod.cpi
