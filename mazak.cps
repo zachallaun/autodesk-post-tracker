@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 44061 7a343a3a908d7f2be43c39898815a09ee8c42a27 $
-  $Date: 2023-04-13 07:43:26 $
+  $Revision: 44063 957e0786edfb03367dd79f0277f5189d621e4f03 $
+  $Date: 2023-04-28 16:43:54 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -209,7 +209,7 @@ wcsDefinitions = {
 var gFormat = createFormat({prefix:"G", decimals:1});
 var mFormat = createFormat({prefix:"M", decimals:0});
 var hFormat = createFormat({prefix:"H", decimals:0});
-var dFormat = createFormat({prefix:"D", decimals:0});
+var diameterOffsetFormat = createFormat({prefix:"D", decimals:0});
 var probeWCSFormat = createFormat({decimals:0, forceDecimal:true});
 
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
@@ -239,7 +239,6 @@ var feedOutput = createVariable({prefix:"F"}, feedFormat);
 var inverseTimeOutput = createVariable({prefix:"F", force:true}, inverseTimeFormat);
 var pitchOutput = createVariable({prefix:"F", force:true}, pitchFormat);
 var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
-var dOutput = createVariable({}, dFormat);
 
 // circular output
 var iOutput = createReferenceVariable({prefix:"I", force:true}, xyzFormat);
@@ -331,9 +330,10 @@ var settings = {
     prefix               : "(", // specifies the prefix for the comment
     suffix               : ")", // specifies the suffix for the comment
     upperCase            : true, // set to true to output all comments in upper case
-    maximumLineLength    : 80, // the maximum number of charaters allowed in a line
+    maximumLineLength    : 80, // the maximum number of charaters allowed in a line, set to 0 to disable comment output
   },
   probing: {
+    macroCall              : gFormat.format(65), // specifies the command to call a macro
     probeAngleMethod       : "OFF", // supported options are: OFF, AXIS_ROT, G68, G54.4
     allowIndexingWCSProbing: false // specifies that probe WCS with tool orientation is supported
   },
@@ -570,7 +570,7 @@ function onSection() {
   if (isProbeOperation()) {
     validate(settings.probing.probeAngleMethod != "G68", "You cannot probe while G68 Rotation is in effect.");
     validate(settings.probing.probeAngleMethod != "G54.4", "You cannot probe while workpiece setting error compensation G54.4 is enabled.");
-    writeBlock(gFormat.format(65), "P" + 9832); // spin the probe on
+    writeBlock(settings.probing.macroCall, "P" + 9832); // spin the probe on
     inspectionCreateResultsFileHeader();
   } else {
     // surface Inspection
@@ -873,7 +873,7 @@ function onCycleEnd() {
   if (isProbeOperation()) {
     zOutput.reset();
     gMotionModal.reset();
-    writeBlock(gFormat.format(65), "P" + 9810, zOutput.format(cycle.retract)); // protected retract move
+    writeBlock(settings.probing.macroCall, "P" + 9810, zOutput.format(cycle.retract)); // protected retract move
   } else {
     if (!cycleExpanded) {
       writeBlock(gCycleModal.format(80));
@@ -1062,7 +1062,7 @@ function onSectionEnd() {
   }
 
   if (isProbeOperation()) {
-    writeBlock(gFormat.format(65), "P" + 9833); // spin the probe off
+    writeBlock(settings.probing.macroCall, "P" + 9833); // spin the probe off
     if (settings.probing.probeAngleMethod != "G68") {
       setProbeAngle(); // output probe angle rotations if required
     }
@@ -1425,7 +1425,10 @@ function writeComment(text) {
   }
   var comments = String(text).split("\n");
   for (comment in comments) {
-    writeln(formatComment(comments[comment]));
+    var _comment = formatComment(comments[comment]);
+    if (_comment) {
+      writeln(_comment);
+    }
   }
 }
 
@@ -2341,6 +2344,10 @@ function onRapid(_x, _y, _z) {
 // <<<<< INCLUDED FROM include_files/onRapid_fanuc.cpi
 // >>>>> INCLUDED FROM include_files/onLinear_fanuc.cpi
 function onLinear(_x, _y, _z, feed) {
+  if (pendingRadiusCompensation >= 0) {
+    xOutput.reset();
+    yOutput.reset();
+  }
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
   var z = zOutput.format(_z);
@@ -2348,16 +2355,14 @@ function onLinear(_x, _y, _z, feed) {
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
-      var d = tool.diameterOffset;
+      var d = getSetting("outputToolDiameterOffset", true) ? diameterOffsetFormat.format(tool.diameterOffset) : "";
       writeBlock(gPlaneModal.format(17));
       switch (radiusCompensation) {
       case RADIUS_COMPENSATION_LEFT:
-        dOutput.reset();
-        writeBlock(gMotionModal.format(1), gFormat.format(41), x, y, z, dOutput.format(d), f);
+        writeBlock(gMotionModal.format(1), gFormat.format(41), x, y, z, d, f);
         break;
       case RADIUS_COMPENSATION_RIGHT:
-        dOutput.reset();
-        writeBlock(gMotionModal.format(1), gFormat.format(42), x, y, z, dOutput.format(d), f);
+        writeBlock(gMotionModal.format(1), gFormat.format(42), x, y, z, d, f);
         break;
       default:
         writeBlock(gMotionModal.format(1), gFormat.format(40), x, y, z, f);
@@ -2542,11 +2547,12 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
     protectedProbeMove(cycle, x, y, z);
   }
 
+  var macroCall = settings.probing.macroCall;
   switch (cycleType) {
   case "probing-x":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9811,
+      macroCall, "P" + 9811,
       "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       getProbingArguments(cycle, true)
@@ -2555,7 +2561,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-y":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9811,
+      macroCall, "P" + 9811,
       "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       getProbingArguments(cycle, true)
@@ -2564,7 +2570,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-z":
     protectedProbeMove(cycle, x, y, Math.min(z - cycle.depth + cycle.probeClearance, cycle.retract));
     writeBlock(
-      gFormat.format(65), "P" + 9811,
+      macroCall, "P" + 9811,
       "Z" + xyzFormat.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       getProbingArguments(cycle, true)
@@ -2573,7 +2579,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-x-wall":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "X" + xyzFormat.format(cycle.width1),
       zOutput.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2584,7 +2590,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-y-wall":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Y" + xyzFormat.format(cycle.width1),
       zOutput.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2595,7 +2601,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-x-channel":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "X" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       // not required "R" + xyzFormat.format(cycle.probeClearance),
@@ -2605,7 +2611,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-x-channel-with-island":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "X" + xyzFormat.format(cycle.width1),
       zOutput.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2616,7 +2622,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-y-channel":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Y" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       // not required "R" + xyzFormat.format(cycle.probeClearance),
@@ -2626,7 +2632,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-y-channel-with-island":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Y" + xyzFormat.format(cycle.width1),
       zOutput.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2637,7 +2643,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-boss":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9814,
+      macroCall, "P" + 9814,
       "D" + xyzFormat.format(cycle.width1),
       "Z" + xyzFormat.format(z - cycle.depth),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2648,7 +2654,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-partial-boss":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9823,
+      macroCall, "P" + 9823,
       "A" + xyzFormat.format(cycle.partialCircleAngleA),
       "B" + xyzFormat.format(cycle.partialCircleAngleB),
       "C" + xyzFormat.format(cycle.partialCircleAngleC),
@@ -2662,7 +2668,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-hole":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9814,
+      macroCall, "P" + 9814,
       "D" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       // not required "R" + xyzFormat.format(cycle.probeClearance),
@@ -2672,7 +2678,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-partial-hole":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9823,
+      macroCall, "P" + 9823,
       "A" + xyzFormat.format(cycle.partialCircleAngleA),
       "B" + xyzFormat.format(cycle.partialCircleAngleB),
       "C" + xyzFormat.format(cycle.partialCircleAngleC),
@@ -2684,7 +2690,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-hole-with-island":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9814,
+      macroCall, "P" + 9814,
       "Z" + xyzFormat.format(z - cycle.depth),
       "D" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2695,7 +2701,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-circular-partial-hole-with-island":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9823,
+      macroCall, "P" + 9823,
       "Z" + xyzFormat.format(z - cycle.depth),
       "A" + xyzFormat.format(cycle.partialCircleAngleA),
       "B" + xyzFormat.format(cycle.partialCircleAngleB),
@@ -2709,14 +2715,14 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-rectangular-hole":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "X" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       // not required "R" + xyzFormat.format(-cycle.probeClearance),
       getProbingArguments(cycle, true)
     );
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Y" + xyzFormat.format(cycle.width2),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
       // not required "R" + xyzFormat.format(-cycle.probeClearance),
@@ -2726,7 +2732,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-rectangular-boss":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Z" + xyzFormat.format(z - cycle.depth),
       "X" + xyzFormat.format(cycle.width1),
       "R" + xyzFormat.format(cycle.probeClearance),
@@ -2734,7 +2740,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
       getProbingArguments(cycle, true)
     );
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Z" + xyzFormat.format(z - cycle.depth),
       "Y" + xyzFormat.format(cycle.width2),
       "R" + xyzFormat.format(cycle.probeClearance),
@@ -2745,7 +2751,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-rectangular-hole-with-island":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Z" + xyzFormat.format(z - cycle.depth),
       "X" + xyzFormat.format(cycle.width1),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2753,7 +2759,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
       getProbingArguments(cycle, true)
     );
     writeBlock(
-      gFormat.format(65), "P" + 9812,
+      macroCall, "P" + 9812,
       "Z" + xyzFormat.format(z - cycle.depth),
       "Y" + xyzFormat.format(cycle.width2),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2779,7 +2785,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
     }
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9815, xOutput.format(cornerX), yOutput.format(cornerY),
+      macroCall, "P" + 9815, xOutput.format(cornerX), yOutput.format(cornerY),
       conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
       conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2803,7 +2809,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
     }
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9816, xOutput.format(cornerX), yOutput.format(cornerY),
+      macroCall, "P" + 9816, xOutput.format(cornerX), yOutput.format(cornerY),
       conditional(cornerI != 0, "I" + xyzFormat.format(cornerI)),
       conditional(cornerJ != 0, "J" + xyzFormat.format(cornerJ)),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2813,7 +2819,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-x-plane-angle":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9843,
+      macroCall, "P" + 9843,
       "X" + xyzFormat.format(x + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
       "D" + xyzFormat.format(cycle.probeSpacing),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2828,7 +2834,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-y-plane-angle":
     protectedProbeMove(cycle, x, y, z - cycle.depth);
     writeBlock(
-      gFormat.format(65), "P" + 9843,
+      macroCall, "P" + 9843,
       "Y" + xyzFormat.format(y + approach(cycle.approach1) * (cycle.probeClearance + tool.diameter / 2)),
       "D" + xyzFormat.format(cycle.probeSpacing),
       "Q" + xyzFormat.format(cycle.probeOvertravel),
@@ -2843,7 +2849,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-pcd-hole":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9819,
+      macroCall, "P" + 9819,
       "A" + xyzFormat.format(cycle.pcdStartingAngle),
       "B" + xyzFormat.format(cycle.numberOfSubfeatures),
       "C" + xyzFormat.format(cycle.widthPCD),
@@ -2860,7 +2866,7 @@ function writeProbeCycle(cycle, x, y, z, P, F) {
   case "probing-xy-pcd-boss":
     protectedProbeMove(cycle, x, y, z);
     writeBlock(
-      gFormat.format(65), "P" + 9819,
+      macroCall, "P" + 9819,
       "A" + xyzFormat.format(cycle.pcdStartingAngle),
       "B" + xyzFormat.format(cycle.numberOfSubfeatures),
       "C" + xyzFormat.format(cycle.widthPCD),
@@ -2917,14 +2923,15 @@ function protectedProbeMove(_cycle, x, y, z) {
   var _x = xOutput.format(x);
   var _y = yOutput.format(y);
   var _z = zOutput.format(z);
+  var macroCall = settings.probing.macroCall;
   if (_z && z >= getCurrentPosition().z) {
-    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
+    writeBlock(macroCall, "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
   }
   if (_x || _y) {
-    writeBlock(gFormat.format(65), "P" + 9810, _x, _y, getFeed(highFeedrate)); // protected positioning move
+    writeBlock(macroCall, "P" + 9810, _x, _y, getFeed(highFeedrate)); // protected positioning move
   }
   if (_z && z < getCurrentPosition().z) {
-    writeBlock(gFormat.format(65), "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
+    writeBlock(macroCall, "P" + 9810, _z, getFeed(cycle.feedrate)); // protected positioning move
   }
 }
 // <<<<< INCLUDED FROM include_files/protectedProbeMove_renishaw.cpi
