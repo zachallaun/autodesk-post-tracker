@@ -4,8 +4,8 @@
 
   Mazak post processor configuration.
 
-  $Revision: 44063 957e0786edfb03367dd79f0277f5189d621e4f03 $
-  $Date: 2023-04-28 16:43:54 $
+  $Revision: 44066 595dc754de98319ddce25b7bc7c15246072fce54 $
+  $Date: 2023-05-15 12:25:05 $
 
   FORKID {62F61C65-979D-4f9f-97B0-C5F9634CC6A7}
 */
@@ -501,11 +501,11 @@ function setWorkPlane(abc) {
 }
 
 function onSection() {
-  var forceToolAndRetract = optionalSection && !currentSection.isOptional();
+  var forceSectionRestart = optionalSection && !currentSection.isOptional();
   optionalSection = currentSection.isOptional();
-  var insertToolCall = isToolChangeNeeded("number") || forceToolAndRetract;
-  var newWorkOffset = isNewWorkOffset();
-  var newWorkPlane = isNewWorkPlane();
+  var insertToolCall = isToolChangeNeeded("number") || forceSectionRestart;
+  var newWorkOffset = isNewWorkOffset() || forceSectionRestart;
+  var newWorkPlane = isNewWorkPlane() || forceSectionRestart;
   initializeSmoothing(); // initialize smoothing mode
 
   if (insertToolCall || newWorkOffset || newWorkPlane || smoothing.cancel) {
@@ -530,7 +530,6 @@ function onSection() {
   // tool change
   if (insertToolCall) {
     cancelWorkPlane();
-    forceModals();
   }
   writeToolCall(tool, insertToolCall);
   startSpindle(tool, insertToolCall);
@@ -2154,6 +2153,9 @@ function FeedContext(id, description, feed) {
 // <<<<< INCLUDED FROM include_files/parametricFeeds.cpi
 // >>>>> INCLUDED FROM include_files/writeToolCall.cpi
 function writeToolCall(tool, insertToolCall) {
+  if (typeof forceModals == "function" && (insertToolCall || getProperty("safeStartAllOperations"))) {
+    forceModals();
+  }
   writeStartBlocks(insertToolCall, function () {
     if (!retracted) {
       writeRetract(Z);
