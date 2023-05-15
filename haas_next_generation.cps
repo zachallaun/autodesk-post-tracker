@@ -4,8 +4,8 @@
 
   HAAS post processor configuration.
 
-  $Revision: 44047 346dd981e18882b84b57316dc8c41181563c80cd $
-  $Date: 2023-02-03 19:38:40 $
+  $Revision: 44066 c2ff72380639ccf77a8f57f0e7c223d8db683c88 $
+  $Date: 2023-05-15 09:48:43 $
 
   FORKID {DBD402DA-DE90-4634-A6A3-0AE5CC97DEC7}
 */
@@ -495,9 +495,9 @@ var iOutput = createReferenceVariable({prefix:"I", force:true}, xyzFormat);
 var jOutput = createReferenceVariable({prefix:"J", force:true}, xyzFormat);
 var kOutput = createReferenceVariable({prefix:"K", force:true}, xyzFormat);
 
-var gMotionModal = createModal({}, gFormat); // modal group 1 // G0-G3, ...
-var gPlaneModal = createModal({onchange:function () {gMotionModal.reset();}}, gFormat); // modal group 2 // G17-19
-var gAbsIncModal = createModal({}, gFormat); // modal group 3 // G90-91
+var gMotionModal = createModal({onchange:function() {if (skipBlock) {forceModals(gMotionModal);}}}, gFormat); // modal group 1 // G0-G3, ...
+var gPlaneModal  = createModal({onchange:function() {if (skipBlock) {forceModals(gPlaneModal);} forceModals(gMotionModal);}}, gFormat); // modal group 2 // G17-19
+var gAbsIncModal = createModal({onchange:function() {if (skipBlock) {forceModals(gAbsIncModal);}}}, gFormat); // modal group 3 // G90-91
 var gFeedModeModal = createModal({}, gFormat); // modal group 5 // G93-94
 var gUnitModal = createModal({}, gFormat); // modal group 6 // G20-21
 var gCycleModal = createModal({}, gFormat); // modal group 9 // G81, ...
@@ -1314,6 +1314,27 @@ function forceAny() {
   forceFeed();
 }
 
+function forceModals() {
+  if (arguments.length == 0) { // reset all modal variables listed below
+    if (typeof gMotionModal != "undefined") {
+      gMotionModal.reset();
+    }
+    if (typeof gPlaneModal != "undefined") {
+      gPlaneModal.reset();
+    }
+    if (typeof gAbsIncModal != "undefined") {
+      gAbsIncModal.reset();
+    }
+    if (typeof gFeedModeModal != "undefined") {
+      gFeedModeModal.reset();
+    }
+  } else {
+    for (var i in arguments) {
+      arguments[i].reset(); // only reset the modal variable passed to this function
+    }
+  }
+}
+
 var lengthCompensationActive = false;
 /** Disables length compensation if currently active or if forced. */
 function disableLengthCompensation(force, message) {
@@ -1610,7 +1631,7 @@ function defineWorkPlane(_section, _setWorkPlane) {
       abc = _section.isMultiAxis() ? _section.getInitialToolAxisABC() : getWorkPlaneMachineABC(_section.workPlane, _setWorkPlane);
     }
     if (_section.isMultiAxis() || isPolarModeActive()) {
-      cancelTransformationTemp();
+      cancelTransformation();
       if (_setWorkPlane) {
         if (activeG254) {
           writeBlock(gFormat.format(255)); // cancel DWO
@@ -1630,7 +1651,7 @@ function defineWorkPlane(_section, _setWorkPlane) {
       error(localize("Tool orientation is not supported."));
       return abc;
     }
-    setRotationTemp(remaining);
+    setRotation(remaining);
   }
   if (currentSection && (currentSection.getId() == _section.getId())) {
     operationSupportsTCP = (_section.isMultiAxis() || !useMultiAxisFeatures) && _section.getOptimizedTCPMode() == OPTIMIZE_NONE;
@@ -1726,27 +1747,14 @@ function getWorkPlaneMachineABC(workPlane) {
 
   var tcp = false;
   if (tcp) {
-    setRotationTemp(W); // TCP mode
+    setRotation(W); // TCP mode
   } else {
     var O = machineConfiguration.getOrientation(abc);
     var R = machineConfiguration.getRemainingOrientation(abc, W);
-    setRotationTemp(R);
+    setRotation(R);
   }
 
   return abc;
-}
-
-// TAG setRotation & cancelTransformation will rotate the rotary angle directions, fixed in a future release of the post engine
-function setRotationTemp(W) {
-  var currentDirection = getCurrentDirection();
-  setRotation(W);
-  setCurrentDirection(currentDirection);
-}
-
-function cancelTransformationTemp() {
-  var currentDirection = getCurrentDirection();
-  cancelTransformation();
-  setCurrentDirection(currentDirection);
 }
 
 var UNWIND_ZERO = 1; // rotate axes to closest 0 (eg G28)
@@ -2104,7 +2112,7 @@ function subprogramIsValid(_section, _patternId, _patternType) {
       }
     }
   }
-  setRotationTemp(rotation);
+  setRotation(rotation);
   setTranslation(translation);
   return (validSubprogram);
 }
@@ -2149,25 +2157,16 @@ function setAbsoluteMode(xyz, abc) {
 }
 
 function onSection() {
-  var forceToolAndRetract = optionalSection && !currentSection.isOptional();
+  var forceSectionRestart = optionalSection && !currentSection.isOptional();
   optionalSection = currentSection.isOptional();
 
-  var insertToolCall = forceToolAndRetract || isFirstSection() ||
-    currentSection.getForceToolChange && currentSection.getForceToolChange() ||
-    (tool.number != getPreviousSection().getTool().number);
+  var insertToolCall = isToolChangeNeeded("number") || forceSectionRestart;
+  var newWorkOffset = isNewWorkOffset() || forceSectionRestart;
+  var newWorkPlane = isNewWorkPlane() || forceSectionRestart;
 
   retracted = false;
 
   var zIsOutput = false; // true if the Z-position has been output, used for patterns
-  var newWorkOffset = isFirstSection() ||
-    (getPreviousSection().workOffset != currentSection.workOffset); // work offset changes
-  var newWorkPlane = isFirstSection() ||
-    !isSameDirection(getPreviousSection().getGlobalFinalToolAxis(), currentSection.getGlobalInitialToolAxis()) ||
-    (currentSection.isOptimizedForMachine() && getPreviousSection().isOptimizedForMachine() &&
-      Vector.diff(getPreviousSection().getFinalToolAxisABC(), currentSection.getInitialToolAxisABC()).length > 1e-4) ||
-    (!machineConfiguration.isMultiAxisConfiguration() && currentSection.isMultiAxis()) ||
-    (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
-      getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
 
   operationNeedsSafeStart = getProperty("safeStartAllOperations") && !isFirstSection();
 
@@ -2251,7 +2250,7 @@ function onSection() {
   }
 
   if (insertToolCall || operationNeedsSafeStart) {
-
+    forceModals();
     if (getProperty("useM130ToolImages")) {
       writeBlock(mFormat.format(130), "(tool" + tool.number + ".png)");
     }
@@ -2351,6 +2350,9 @@ function onSection() {
   } else {
     activeMovements = undefined;
   }
+
+  // Output modal commands here
+  writeBlock(gPlaneModal.format(17), gAbsIncModal.format(90), gFeedModeModal.format(94));
 
   // wcs
   if (insertToolCall || operationNeedsSafeStart) { // force work offset when changing tool
