@@ -103,27 +103,21 @@ defmodule GitOps do
     end
   end
 
-  def checkout(branch) do
-    git(["checkout", branch])
-  end
-
   def commit_file(pathspec, message_file, date) do
     with {:ok, _} <- git(["add", pathspec]) do
       git(["commit", "--file", message_file, "--date", date])
     end
   end
 
-  def last_message do
-    git(["log", "--pretty=format:%s", "-n1"])
-  end
+  def checkout(branch), do: git(["checkout", branch])
 
-  def stash do
-    git(["stash"])
-  end
+  def stash, do: git(["stash"])
 
-  def stash_pop do
-    git(["stash", "pop"])
-  end
+  def stash_pop, do: git(["stash", "pop"])
+
+  def last_message, do: git(["log", "--pretty=format:%s", "-n1"])
+
+  def diff, do: git(["diff"])
 
   def git(command) do
     case System.cmd("git", command) do
@@ -136,8 +130,36 @@ end
 defmodule Tracker do
   @message_file ".commit_message"
 
+  def add_all_missing_commits! do
+    tracked_posts = tracked_posts()
+
+    log("Tracked posts: #{tracked_posts}")
+
+    did_stash? =
+      case GitOps.diff() do
+        {:ok, ""} ->
+          false
+
+        {:ok, _} ->
+          Tracker.log("Stashing changes")
+          {:ok, _} = GitOps.stash()
+          true
+      end
+
+    for post <- tracked_posts do
+      Tracker.log("Starting: #{post}")
+      Tracker.add_missing_commits!(post)
+    end
+
+    if did_stash? do
+      Tracker.log("Unstashing changes")
+      GitOps.stash_pop()
+    end
+
+    Tracker.log("Done!")
+  end
+
   def add_missing_commits!(postid) do
-    {:ok, _} = GitOps.stash()
     {:ok, _} = GitOps.checkout_and_maybe_init(postid)
 
     changes =
@@ -170,7 +192,6 @@ defmodule Tracker do
     end
 
     {:ok, _} = GitOps.checkout("main")
-    GitOps.stash_pop()
   end
 
   def tracked_posts do
@@ -197,13 +218,4 @@ defmodule Tracker do
   end
 end
 
-tracked_posts = Tracker.tracked_posts()
-
-Tracker.log("Tracked posts: #{tracked_posts}")
-
-for post <- tracked_posts do
-  Tracker.log("Starting: #{post}")
-  Tracker.add_missing_commits!(post)
-end
-
-Tracker.log("Done!")
+Tracker.add_all_missing_commits!()
