@@ -104,8 +104,13 @@ defmodule GitOps do
   end
 
   def commit_file(pathspec, message_file, date) do
+    env = [
+      {"GIT_AUTHOR_DATE", date},
+      {"GIT_COMMITTER_DATE", date}
+    ]
+
     with {:ok, _} <- git(["add", pathspec]) do
-      git(["commit", "--file", message_file, "--date", date])
+      git(["commit", "--file", message_file], env: env)
     end
   end
 
@@ -119,8 +124,8 @@ defmodule GitOps do
 
   def diff, do: git(["diff"])
 
-  def git(command) do
-    case System.cmd("git", command) do
+  def git(command, cmd_opts \\ []) do
+    case System.cmd("git", command, cmd_opts) do
       {out, 0} -> {:ok, String.trim(out)}
       {err, code} -> {:error, code, err}
     end
@@ -131,9 +136,13 @@ defmodule Tracker do
   @message_file ".commit_message"
 
   def add_all_missing_commits! do
-    tracked_posts = tracked_posts()
+    tracked_posts =
+      case System.argv() do
+        [] -> tracked_posts()
+        postids -> postids
+      end
 
-    log("Tracked posts: #{tracked_posts}")
+    log("Tracking: #{Enum.join(tracked_posts, ", ")}")
 
     did_stash? =
       case GitOps.diff() do
@@ -178,8 +187,9 @@ defmodule Tracker do
           changes
       end
 
-    for change <- changes do
-      contents = Download.post_processor(change)
+    changes
+    |> Task.async_stream(fn change -> {change, Download.post_processor(change)} end)
+    |> Enum.each(fn {:ok, {change, contents}} ->
       filename = PostChange.filename(change)
       commit_message = PostChange.commit_message(change)
 
@@ -189,7 +199,7 @@ defmodule Tracker do
       {:ok, _} = GitOps.commit_file(filename, @message_file, change.date)
 
       File.rm!(@message_file)
-    end
+    end)
 
     {:ok, _} = GitOps.checkout("main")
   end
