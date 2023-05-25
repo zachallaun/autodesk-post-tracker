@@ -9,7 +9,8 @@ defmodule PostChange do
     :revision,
     :minimum_revision,
     :messages,
-    status: :unknown # :unknown | :committed | :missing
+    # :unknown | :committed | :missing
+    status: :unknown
   ]
 
   def from_json!(name, data) do
@@ -25,7 +26,7 @@ defmodule PostChange do
       date: date_string,
       revision: revision,
       minimum_revision: min_revision,
-      messages: Enum.map(messages, &(&1["message"]))
+      messages: Enum.map(messages, & &1["message"])
     }
   end
 
@@ -127,40 +128,77 @@ defmodule GitOps do
   end
 end
 
-name = "mazak"
-message_file = ".commit_message"
+defmodule Tracker do
+  def get_tracked do
+    "README.md"
+    |> File.read!()
+    |> String.split("<!-- TRACKED -->")
+    |> Enum.at(1)
+    |> String.trim()
+    |> String.split("\n")
+    |> Enum.map(fn s ->
+      [_, url_and_rest] = String.split(s, "(", parts: 2)
+      [url, _] = String.split(url_and_rest, ")", parts: 2)
 
-{:ok, _} = GitOps.stash()
-{:ok, _} = GitOps.checkout_and_maybe_init(name)
-
-changes =
-  name
-  |> Download.changes()
-  |> Enum.reverse()
-
-{:ok, last_message} = GitOps.last_message()
-
-changes =
-  case PostChange.revision_from_commit_message(last_message) do
-    {:ok, last_known_revision} ->
-      Enum.drop_while(changes, &(&1.revision <= last_known_revision))
-
-    :error ->
-      changes
+      url
+      |> Path.basename()
+      |> Path.rootname()
+    end)
   end
 
-for change <- changes do
-  contents = Download.post_processor(change)
-  filename = PostChange.filename(change)
-  commit_message = PostChange.commit_message(change)
+  def add_missing_commits!(name) do
+    message_file = ".commit_message"
 
-  File.write!(filename, contents)
-  File.write!(message_file, commit_message)
+    {:ok, _} = GitOps.stash()
+    {:ok, _} = GitOps.checkout_and_maybe_init(name)
 
-  {:ok, _} = GitOps.commit_file(filename, message_file, change.date)
+    changes =
+      name
+      |> Download.changes()
+      |> Enum.reverse()
 
-  File.rm!(message_file)
+    {:ok, last_message} = GitOps.last_message()
+
+    changes =
+      case PostChange.revision_from_commit_message(last_message) do
+        {:ok, last_known_revision} ->
+          Enum.drop_while(changes, &(&1.revision <= last_known_revision))
+
+        :error ->
+          changes
+      end
+
+    for change <- changes do
+      contents = Download.post_processor(change)
+      filename = PostChange.filename(change)
+      commit_message = PostChange.commit_message(change)
+
+      File.write!(filename, contents)
+      File.write!(message_file, commit_message)
+
+      {:ok, _} = GitOps.commit_file(filename, message_file, change.date)
+
+      File.rm!(message_file)
+    end
+
+    {:ok, _} = GitOps.checkout("main")
+    GitOps.stash_pop()
+  end
+
+  def log(message) do
+    prefix = IO.ANSI.format([:cyan, :inverse, " TRACKER "])
+
+    IO.puts(["\n", prefix, " ", message])
+  end
 end
 
-{:ok, _} = GitOps.checkout("main")
-GitOps.stash_pop()
+tracked_posts = Tracker.get_tracked()
+
+Tracker.log("Tracked posts: #{tracked_posts}")
+
+for post <- tracked_posts do
+  Tracker.log("Starting: #{post}")
+  Tracker.add_missing_commits!(post)
+end
+
+Tracker.log("Done!")
