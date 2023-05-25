@@ -1,8 +1,5 @@
 This repo serves as a UI for better understanding what's changed between post processor versions.
 
-## Tracked posts
-
-|
 <!-- TRACKED -->
 | Post Processor | |
 |-|-|
