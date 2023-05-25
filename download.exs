@@ -163,4 +163,4 @@ for change <- changes do
 end
 
 {:ok, _} = GitOps.checkout("main")
-{:ok, _} = GitOps.stash_pop()
+GitOps.stash_pop()
