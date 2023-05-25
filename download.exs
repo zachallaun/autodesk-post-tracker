@@ -205,20 +205,14 @@ defmodule Tracker do
   end
 
   def tracked_posts do
-    "README.md"
-    |> File.read!()
-    |> String.split("<!-- TRACKED -->")
-    |> Enum.at(1)
-    |> String.trim()
-    |> String.split("\n")
-    |> Enum.map(fn s ->
-      [_, url_and_rest] = String.split(s, "(", parts: 2)
-      [url, _] = String.split(url_and_rest, ")", parts: 2)
+    tracked_section =
+      "README.md"
+      |> File.read!()
+      |> String.split("<!-- TRACKED -->")
+      |> Enum.at(1)
 
-      url
-      |> Path.basename()
-      |> Path.rootname()
-    end)
+    Regex.scan(~r"<\!-- (.*) -->"m, tracked_section, capture: :all_but_first)
+    |> List.flatten()
   end
 
   def log(message) do
