@@ -2,9 +2,6 @@ Mix.install([
   :req
 ])
 
-post_changes_url = "https://cam.autodesk.com/posts/changes.php"
-download_url = "https://cam.autodesk.com/posts/download.php?name=mazak&type=post&revision=44066"
-
 defmodule PostChange do
   defstruct [
     :name,
@@ -31,6 +28,34 @@ defmodule PostChange do
       messages: Enum.map(messages, &(&1["message"]))
     }
   end
+
+  def filename(%PostChange{name: name}), do: name <> ".cps"
+
+  def commit_message(%PostChange{revision: revision, messages: [message]}) do
+    """
+    [#{revision}] #{message}
+    """
+  end
+
+  def commit_message(%PostChange{revision: revision, messages: messages}) do
+    bulleted = for msg <- messages, do: "* #{msg}"
+
+    """
+    [#{revision}] #{length(messages)} messages...
+
+    #{Enum.join(bulleted, "\n")}
+    """
+  end
+
+  def revision_from_commit_message(message) do
+    with "[" <> rest <- message,
+         [rev_string, _] <- String.split(rest, "]", parts: 2),
+         {revision, ""} <- Integer.parse(rev_string) do
+      {:ok, revision}
+    else
+      _ -> :error
+    end
+  end
 end
 
 defmodule Download do
@@ -45,11 +70,11 @@ defmodule Download do
     |> Enum.map(&PostChange.from_json!(name, &1))
   end
 
-  def post(%PostChange{name: name, revision: revision}) do
+  def post_processor(%PostChange{name: name, revision: revision}) do
     req()
     |> Req.update(url: @download_url, params: %{type: "post", name: name, revision: revision})
     |> Req.get!()
-    |> Map.fetch!(:headers)
+    |> Map.fetch!(:body)
   end
 
   defp req do
@@ -65,10 +90,16 @@ defmodule GitOps do
   def checkout_and_maybe_init(name) do
     with {:ok, init} <- initial_commit(),
          {:ok, _} <- git(["checkout", "-b", name, init]) do
-      :ok
+      {:ok, ""}
     else
       # branch already exists
       {:error, 128, _} -> checkout(name)
+    end
+  end
+
+  def commit_file(pathspec, message_file, date) do
+    with {:ok, _} <- git(["add", pathspec]) do
+      git(["commit", "--file", message_file, "--date", date])
     end
   end
 
@@ -96,10 +127,40 @@ defmodule GitOps do
   end
 end
 
-with {:ok, _} <- GitOps.stash(),
-     resp <- GitOps.checkout_and_maybe_init("testing"),
-     {:ok, _} <- GitOps.checkout("main"),
-     {:ok, _} <- GitOps.stash_pop() do
-  resp
+name = "mazak"
+message_file = ".commit_message"
+
+{:ok, _} = GitOps.stash()
+{:ok, _} = GitOps.checkout_and_maybe_init(name)
+
+changes =
+  name
+  |> Download.changes()
+  |> Enum.reverse()
+
+{:ok, last_message} = GitOps.last_message()
+
+changes =
+  case PostChange.revision_from_commit_message(last_message) do
+    {:ok, last_known_revision} ->
+      Enum.drop_while(changes, &(&1.revision <= last_known_revision))
+
+    :error ->
+      changes
+  end
+
+for change <- changes do
+  contents = Download.post_processor(change)
+  filename = PostChange.filename(change)
+  commit_message = PostChange.commit_message(change)
+
+  File.write!(filename, contents)
+  File.write!(message_file, commit_message)
+
+  {:ok, _} = GitOps.commit_file(filename, message_file, change.date)
+
+  File.rm!(message_file)
 end
-|> IO.inspect()
+
+{:ok, _} = GitOps.checkout("main")
+{:ok, _} = GitOps.stash_pop()
