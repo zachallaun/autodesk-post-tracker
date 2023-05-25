@@ -4,16 +4,14 @@ Mix.install([
 
 defmodule PostChange do
   defstruct [
-    :name,
+    :postid,
     :date,
     :revision,
     :minimum_revision,
-    :messages,
-    # :unknown | :committed | :missing
-    status: :unknown
+    :messages
   ]
 
-  def from_json!(name, data) do
+  def from_json!(postid, data) do
     %{
       "date" => date_string,
       "revision" => revision,
@@ -22,7 +20,7 @@ defmodule PostChange do
     } = data
 
     %PostChange{
-      name: name,
+      postid: postid,
       date: date_string,
       revision: revision,
       minimum_revision: min_revision,
@@ -30,7 +28,7 @@ defmodule PostChange do
     }
   end
 
-  def filename(%PostChange{name: name}), do: name <> ".cps"
+  def filename(%PostChange{postid: postid}), do: postid <> ".cps"
 
   def commit_message(%PostChange{revision: revision, messages: [message]}) do
     """
@@ -61,25 +59,32 @@ end
 
 defmodule Download do
   @post_changes_url "https://cam.autodesk.com/posts/changes.php"
-  @download_url "https://cam.autodesk.com/posts/download.php?name=mazak&type=post&revision=44066"
+  @download_url "https://cam.autodesk.com/posts/download.php"
 
-  def changes(name \\ "mazak") do
+  def changes(postid) do
     req()
-    |> Req.update(url: @post_changes_url, params: %{name: name})
+    |> Req.update(url: @post_changes_url, params: %{name: name(postid)})
     |> Req.get!()
     |> Map.fetch!(:body)
-    |> Enum.map(&PostChange.from_json!(name, &1))
+    |> Enum.map(&PostChange.from_json!(postid, &1))
   end
 
-  def post_processor(%PostChange{name: name, revision: revision}) do
+  def post_processor(%PostChange{postid: postid, revision: revision}) do
     req()
-    |> Req.update(url: @download_url, params: %{type: "post", name: name, revision: revision})
+    |> Req.update(
+      url: @download_url,
+      params: %{type: "post", name: name(postid), revision: revision}
+    )
     |> Req.get!()
     |> Map.fetch!(:body)
   end
 
   defp req do
     Req.new(json: true)
+  end
+
+  defp name(postid) do
+    String.replace(postid, "_", " ")
   end
 end
 
@@ -88,14 +93,18 @@ defmodule GitOps do
     git(["rev-list", "--max-parents=0", "main"])
   end
 
-  def checkout_and_maybe_init(name) do
+  def checkout_and_maybe_init(branch) do
     with {:ok, init} <- initial_commit(),
-         {:ok, _} <- git(["checkout", "-b", name, init]) do
+         {:ok, _} <- git(["checkout", "-b", branch, init]) do
       {:ok, ""}
     else
       # branch already exists
-      {:error, 128, _} -> checkout(name)
+      {:error, 128, _} -> checkout(branch)
     end
+  end
+
+  def checkout(branch) do
+    git(["checkout", branch])
   end
 
   def commit_file(pathspec, message_file, date) do
@@ -106,10 +115,6 @@ defmodule GitOps do
 
   def last_message do
     git(["log", "--pretty=format:%s", "-n1"])
-  end
-
-  def checkout(name) do
-    git(["checkout", name])
   end
 
   def stash do
@@ -129,31 +134,14 @@ defmodule GitOps do
 end
 
 defmodule Tracker do
-  def get_tracked do
-    "README.md"
-    |> File.read!()
-    |> String.split("<!-- TRACKED -->")
-    |> Enum.at(1)
-    |> String.trim()
-    |> String.split("\n")
-    |> Enum.map(fn s ->
-      [_, url_and_rest] = String.split(s, "(", parts: 2)
-      [url, _] = String.split(url_and_rest, ")", parts: 2)
+  @message_file ".commit_message"
 
-      url
-      |> Path.basename()
-      |> Path.rootname()
-    end)
-  end
-
-  def add_missing_commits!(name) do
-    message_file = ".commit_message"
-
+  def add_missing_commits!(postid) do
     {:ok, _} = GitOps.stash()
-    {:ok, _} = GitOps.checkout_and_maybe_init(name)
+    {:ok, _} = GitOps.checkout_and_maybe_init(postid)
 
     changes =
-      name
+      postid
       |> Download.changes()
       |> Enum.reverse()
 
@@ -174,15 +162,32 @@ defmodule Tracker do
       commit_message = PostChange.commit_message(change)
 
       File.write!(filename, contents)
-      File.write!(message_file, commit_message)
+      File.write!(@message_file, commit_message)
 
-      {:ok, _} = GitOps.commit_file(filename, message_file, change.date)
+      {:ok, _} = GitOps.commit_file(filename, @message_file, change.date)
 
-      File.rm!(message_file)
+      File.rm!(@message_file)
     end
 
     {:ok, _} = GitOps.checkout("main")
     GitOps.stash_pop()
+  end
+
+  def tracked_posts do
+    "README.md"
+    |> File.read!()
+    |> String.split("<!-- TRACKED -->")
+    |> Enum.at(1)
+    |> String.trim()
+    |> String.split("\n")
+    |> Enum.map(fn s ->
+      [_, url_and_rest] = String.split(s, "(", parts: 2)
+      [url, _] = String.split(url_and_rest, ")", parts: 2)
+
+      url
+      |> Path.basename()
+      |> Path.rootname()
+    end)
   end
 
   def log(message) do
@@ -192,7 +197,7 @@ defmodule Tracker do
   end
 end
 
-tracked_posts = Tracker.get_tracked()
+tracked_posts = Tracker.tracked_posts()
 
 Tracker.log("Tracked posts: #{tracked_posts}")
 
