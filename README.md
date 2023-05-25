@@ -1,4 +1,12 @@
+# Autodesk Post Processor Tracker
+
 This repo serves as a UI for better understanding what's changed between post processor versions.
+
+## How to use
+
+Find a post below and click on `history` to review all changes.
+
+## Tracked posts
 
 <!-- TRACKED -->
 | Post Processor | |
